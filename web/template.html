@@ -1,0 +1,392 @@
+<title>Sheepdog Trial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #eceee6;
+    --surface: #f6f7f2;
+    --surface-sunk: #dfe2d8;
+    --ink: #1c221a;
+    --ink-soft: #4a5147;
+    --ink-faint: #78806f;
+    --rule: #cdd2c4;
+    --paddock: #6d8b5e;
+    --paddock-tuft: #5c7a4f;
+    --wool: #f2efe4;
+    --ochre: #b8830f;
+    --slate: #4f7d97;
+    --rust: #b34a2f;
+    --swatch-graze: #d9d4c2;
+    --swatch-alert: #e0a92e;
+    --swatch-walk: #7fa3b8;
+    --swatch-run: #c05a3e;
+    --font-display: "Bitter", Georgia, serif;
+    --font-body: "IBM Plex Sans", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14180f;
+      --surface: #1d2318;
+      --surface-sunk: #0e1209;
+      --ink: #e8eade;
+      --ink-soft: #b0b7a6;
+      --ink-faint: #7d8574;
+      --rule: #333a2b;
+      --paddock: #47603c;
+      --paddock-tuft: #3d5434;
+      --ochre: #e0a92e;
+      --slate: #7fa3b8;
+      --rust: #d4674a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14180f;
+    --surface: #1d2318;
+    --surface-sunk: #0e1209;
+    --ink: #e8eade;
+    --ink-soft: #b0b7a6;
+    --ink-faint: #7d8574;
+    --rule: #333a2b;
+    --paddock: #47603c;
+    --paddock-tuft: #3d5434;
+    --ochre: #e0a92e;
+    --slate: #7fa3b8;
+    --rust: #d4674a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 28px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  header { display: flex; flex-direction: column; gap: 8px; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(30px, 5vw, 46px);
+    line-height: 1.05;
+    margin: 0;
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+  .standfirst {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-soft);
+    font-size: 16px;
+  }
+
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 306px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+
+  .field { display: flex; flex-direction: column; gap: 10px; }
+  .canvas-shell {
+    position: relative;
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule);
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 40 / 22;
+    touch-action: none;
+    cursor: none;
+  }
+  .hint {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    min-height: 2.6em;
+    margin: 0;
+  }
+
+  .rail { display: flex; flex-direction: column; gap: 16px; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 14px 15px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .panel h2 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0;
+  }
+
+  .census { display: flex; height: 9px; border-radius: 2px; overflow: hidden; gap: 1px; }
+  .census span { display: block; transition: flex-grow 0.25s linear; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; margin: 0; }
+  .legend div { display: flex; align-items: baseline; gap: 7px; font-size: 13px; }
+  .legend i { width: 8px; height: 8px; border-radius: 1px; flex: none; align-self: center; }
+  .legend b { font-weight: 500; color: var(--ink-soft); }
+  .legend var {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+    color: var(--ink);
+  }
+
+  .figures { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .figure { display: flex; flex-direction: column; gap: 1px; }
+  .figure dt { font-size: 12px; color: var(--ink-faint); }
+  .figure dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 21px;
+    line-height: 1.15;
+    color: var(--ink);
+  }
+  .figure small { font-size: 11px; color: var(--ink-faint); font-family: var(--font-mono); }
+
+  .controls { display: flex; flex-direction: column; gap: 11px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  label { font-size: 13px; color: var(--ink-soft); }
+  input[type="range"] { width: 140px; accent-color: var(--ochre); }
+  .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 2ch; text-align: right; }
+  button {
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 6px 11px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--ink-faint); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
+  .buttons { display: flex; gap: 8px; }
+  .buttons button { flex: 1; }
+  .checks { display: flex; flex-direction: column; gap: 7px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
+  input[type="checkbox"] { accent-color: var(--ochre); margin: 0; }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 18px 28px; }
+  .note h3 {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .note p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+  .note p + p { margin-top: 7px; }
+  .term { font-family: var(--font-mono); font-size: 0.88em; color: var(--ink); }
+
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+  footer { color: var(--ink-faint); font-size: 13px; max-width: 74ch; }
+  footer a { color: var(--ink-soft); }
+  @media (prefers-reduced-motion: reduce) { .census span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Flock simulation &middot; milestone 3</div>
+    <h1>Sheepdog Trial</h1>
+    <p class="standfirst">
+      Your pointer is the dog. Twenty-four ewes graze, drift and bunch by rules taken from
+      GPS studies of real flocks. Move into their flight zone and they will move away from
+      you, but through their own centre first, the way sheep actually do.
+    </p>
+  </header>
+
+  <div class="stage">
+    <div class="field">
+      <div class="canvas-shell"><canvas id="paddock" aria-label="A paddock of grazing sheep that respond to your pointer"></canvas></div>
+      <p class="hint" id="hint">Move the pointer onto the paddock to take the dog. Approach slowly and wide; come in fast and straight and you will scatter them.</p>
+    </div>
+
+    <div class="rail">
+      <section class="panel">
+        <h2>Flock state</h2>
+        <div class="census" id="census" role="img" aria-label="Proportion of the flock in each behaviour">
+          <span data-state="graze"></span><span data-state="alert"></span><span data-state="walk"></span><span data-state="run"></span>
+        </div>
+        <div class="legend">
+          <div><i style="background:var(--swatch-graze); outline:1px solid var(--rule)"></i><b>Grazing</b><var data-count="0">0%</var></div>
+          <div><i style="background:var(--swatch-alert)"></i><b>Alert</b><var data-count="1">0%</var></div>
+          <div><i style="background:var(--swatch-walk)"></i><b>Walking</b><var data-count="2">0%</var></div>
+          <div><i style="background:var(--swatch-run)"></i><b>Running</b><var data-count="3">0%</var></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Readouts</h2>
+        <dl class="figures">
+          <div class="figure"><dt>Cohesion</dt><dd id="r-cohesion">0.0</dd><small>body lengths to centre</small></div>
+          <div class="figure"><dt>Spacing</dt><dd id="r-spacing">0.0</dd><small>to nearest neighbour</small></div>
+          <div class="figure"><dt>Polarisation</dt><dd id="r-pol">0.00</dd><small>1.0 = all one way</small></div>
+          <div class="figure"><dt>Groups</dt><dd id="r-groups">1</dd><small>1 = flock intact</small></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Controls</h2>
+        <div class="controls">
+          <div class="row">
+            <label for="count">Flock size</label>
+            <input type="range" id="count" min="4" max="80" step="1" value="24">
+            <span class="val" id="count-val">24</span>
+          </div>
+          <div class="buttons">
+            <button type="button" id="newflock">New flock</button>
+            <button type="button" id="pause">Pause</button>
+          </div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="colours"> Colour sheep by behaviour</label>
+            <label class="check"><input type="checkbox" id="links"> Show who is following whom</label>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="notes">
+    <div class="note">
+      <h3>Work the flight zone</h3>
+      <p>
+        Each ewe carries her own <span class="term">flight zone</span>, about 3 body lengths
+        for a still pointer and 8 for a moving one, widened by nerves and shrunk by boldness.
+        Pressure at the edge moves them. Pressure released lets them settle.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Mind the point of balance</h3>
+      <p>
+        Press behind a ewe&rsquo;s shoulder and she goes forward; press ahead of it and she
+        stops or turns back. To send the flock left, be on its right.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Alarm travels</h3>
+      <p>
+        Fright spreads by sight from neighbour to neighbour, weaker at each hop, so one
+        startled ewe usually ripples and dies out while a real threat sweeps the whole flock.
+      </p>
+      <p>
+        Sheep see about 300 degrees. Come at them from the blind cone behind and they notice
+        late, then startle rather than easing away.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Do not dive in</h3>
+      <p>
+        Push into the middle and the flock fractures, with tail-enders breaking back past you.
+        Stragglers must be collected before the rest can be driven, which is what a real
+        outrun is for.
+      </p>
+    </div>
+  </div>
+
+  <hr>
+
+  <footer>
+    <p style="margin:0">
+      Behaviour follows the published field work: intermittent grazing and avalanche
+      re-packing (Ginelli et al. 2015), running to the flock centre rather than away from the
+      dog (King et al. 2012), the shepherd&rsquo;s repulsion and local-centre attraction model
+      (Str&ouml;mbom et al. 2014), rotating temporary leaders in walking lines
+      (G&oacute;mez-Nava et al. 2022), and driven-flock spacing and polarisation
+      (Jadhav et al. 2024). Distances are in sheep body lengths; outer ranges are compressed
+      to fit a paddock on a screen. This page is the simulation on its own. It is destined for
+      a transparent always-on-top window where the flock grazes across your desktop.
+    </p>
+  </footer>
+</div>
+
+<script>
+__APP__
+</script>
+<script>
+  (function () {
+    var ui = {
+      canvas: document.getElementById('paddock'),
+      census: document.getElementById('census'),
+      hint: document.getElementById('hint'),
+      readouts: {
+        cohesion: document.getElementById('r-cohesion'),
+        spacing: document.getElementById('r-spacing'),
+        polarisation: document.getElementById('r-pol'),
+        groups: document.getElementById('r-groups')
+      }
+    };
+    var c = window.Sheep.controls;
+    var seed = 3;
+    var countEl = document.getElementById('count');
+    var countVal = document.getElementById('count-val');
+    var pauseBtn = document.getElementById('pause');
+
+    function boot(state) {
+      state = state || {};
+      if (state.count) { countEl.value = String(state.count); countVal.textContent = String(state.count); }
+      if (state.seed) seed = state.seed;
+      window.Sheep.start(ui);
+      if (state.count || state.seed) c.reset(Number(countEl.value), seed);
+      if (state.debugColours) { document.getElementById('colours').checked = true; c.setDebugColours(true); }
+      if (state.showLinks) { document.getElementById('links').checked = true; c.setLinks(true); }
+    }
+
+    countEl.addEventListener('input', function () {
+      countVal.textContent = countEl.value;
+      c.reset(Number(countEl.value), seed);
+    });
+    document.getElementById('newflock').addEventListener('click', function () {
+      seed = (seed * 7919 + 13) % 100000;
+      c.reset(Number(countEl.value), seed);
+    });
+    function togglePause() {
+      c.setPaused(!c.isPaused());
+      pauseBtn.textContent = c.isPaused() ? 'Resume' : 'Pause';
+    }
+    pauseBtn.addEventListener('click', togglePause);
+    document.getElementById('colours').addEventListener('change', function (e) { c.setDebugColours(e.target.checked); });
+    document.getElementById('links').addEventListener('change', function (e) { c.setLinks(e.target.checked); });
+    addEventListener('keydown', function (e) {
+      if (e.key === ' ' && e.target === document.body) { e.preventDefault(); togglePause(); }
+    });
+
+    if (window.claude && window.claude.hot) {
+      window.claude.hot.snapshot(function () { return c.snapshot(); });
+      window.claude.hot.ready ? window.claude.hot.ready(boot) : boot(window.claude.hot.data);
+    } else {
+      boot({});
+    }
+  })();
+</script>

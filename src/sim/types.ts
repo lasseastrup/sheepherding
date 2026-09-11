@@ -10,7 +10,7 @@ export const enum SheepState {
 export const STATE_NAMES = ['graze', 'alert', 'walk', 'run', 'rest'] as const;
 
 /** Snapshot layout: header then SNAP_STRIDE floats per sheep. */
-export const SNAP_HEADER = 4; // [count, time, step, reserved]
+export const SNAP_HEADER = 8; // [count, time, step, threatActive, threatX, threatY, threatVx, threatVy]
 export const SNAP_STRIDE = 8; // [x, y, heading, speed, state, fear, scale, leader]
 
 export function snapshotLength(count: number): number {

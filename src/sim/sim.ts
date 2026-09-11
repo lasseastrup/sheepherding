@@ -138,7 +138,11 @@ export class Sim {
     out[0] = n;
     out[1] = this.time;
     out[2] = this.step;
-    out[3] = 0;
+    out[3] = this.threat.active ? 1 : 0;
+    out[4] = this.threat.x;
+    out[5] = this.threat.y;
+    out[6] = this.threat.vx;
+    out[7] = this.threat.vy;
     const f = this.flock;
     for (let i = 0; i < n; i++) {
       const o = SNAP_HEADER + i * SNAP_STRIDE;
