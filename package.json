@@ -6,10 +6,10 @@
   "description": "Desktop sheep herding overlay: flock simulation, three.js renderer, Electron shell",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run typecheck && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "typecheck": "npm run gen && tsc --noEmit",
+    "test": "npm run gen && vitest run",
     "test:watch": "vitest",
     "screenshot": "node tools/screenshot.mjs",
     "assets:sheep": "python3 tools/blender/make_sheep.py assets/sheep.glb",
@@ -17,7 +17,8 @@
     "inspect:glb": "node tools/inspect-glb.mjs assets/sheep.glb",
     "build:electron": "node tools/build-electron.mjs",
     "electron": "npm run build:electron && electron .",
-    "dist:win": "npm run build:electron && electron-builder --win portable --publish never"
+    "dist:win": "npm run build:electron && electron-builder --win portable --publish never",
+    "gen": "node tools/gen-glb.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
