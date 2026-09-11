@@ -1,0 +1,393 @@
+<title>Sheepdog Trial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #eceee6;
+    --surface: #f6f7f2;
+    --surface-sunk: #dfe2d8;
+    --ink: #1c221a;
+    --ink-soft: #4a5147;
+    --ink-faint: #78806f;
+    --rule: #cdd2c4;
+    --paddock: #6d8b5e;
+    --paddock-tuft: #5c7a4f;
+    --wool: #f2efe4;
+    --ochre: #b8830f;
+    --slate: #4f7d97;
+    --rust: #b34a2f;
+    --swatch-graze: #d9d4c2;
+    --swatch-alert: #e0a92e;
+    --swatch-walk: #7fa3b8;
+    --swatch-run: #c05a3e;
+    --font-display: "Bitter", Georgia, serif;
+    --font-body: "IBM Plex Sans", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14180f;
+      --surface: #1d2318;
+      --surface-sunk: #0e1209;
+      --ink: #e8eade;
+      --ink-soft: #b0b7a6;
+      --ink-faint: #7d8574;
+      --rule: #333a2b;
+      --paddock: #47603c;
+      --paddock-tuft: #3d5434;
+      --ochre: #e0a92e;
+      --slate: #7fa3b8;
+      --rust: #d4674a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14180f;
+    --surface: #1d2318;
+    --surface-sunk: #0e1209;
+    --ink: #e8eade;
+    --ink-soft: #b0b7a6;
+    --ink-faint: #7d8574;
+    --rule: #333a2b;
+    --paddock: #47603c;
+    --paddock-tuft: #3d5434;
+    --ochre: #e0a92e;
+    --slate: #7fa3b8;
+    --rust: #d4674a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 28px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  header { display: flex; flex-direction: column; gap: 8px; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(30px, 5vw, 46px);
+    line-height: 1.05;
+    margin: 0;
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+  .standfirst {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-soft);
+    font-size: 16px;
+  }
+
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 306px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+
+  .field { display: flex; flex-direction: column; gap: 10px; }
+  .canvas-shell {
+    position: relative;
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule);
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 40 / 22;
+    touch-action: none;
+    cursor: none;
+  }
+  .hint {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    min-height: 2.6em;
+    margin: 0;
+  }
+
+  .rail { display: flex; flex-direction: column; gap: 16px; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 14px 15px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .panel h2 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0;
+  }
+
+  .census { display: flex; height: 9px; border-radius: 2px; overflow: hidden; gap: 1px; }
+  .census span { display: block; transition: flex-grow 0.25s linear; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; margin: 0; }
+  .legend div { display: flex; align-items: baseline; gap: 7px; font-size: 13px; }
+  .legend i { width: 8px; height: 8px; border-radius: 1px; flex: none; align-self: center; }
+  .legend b { font-weight: 500; color: var(--ink-soft); }
+  .legend var {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+    color: var(--ink);
+  }
+
+  .figures { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .figure { display: flex; flex-direction: column; gap: 1px; }
+  .figure dt { font-size: 12px; color: var(--ink-faint); }
+  .figure dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 21px;
+    line-height: 1.15;
+    color: var(--ink);
+  }
+  .figure small { font-size: 11px; color: var(--ink-faint); font-family: var(--font-mono); }
+
+  .controls { display: flex; flex-direction: column; gap: 11px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  label { font-size: 13px; color: var(--ink-soft); }
+  input[type="range"] { width: 140px; accent-color: var(--ochre); }
+  .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 2ch; text-align: right; }
+  button {
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 6px 11px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--ink-faint); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
+  .buttons { display: flex; gap: 8px; }
+  .buttons button { flex: 1; }
+  .checks { display: flex; flex-direction: column; gap: 7px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
+  input[type="checkbox"] { accent-color: var(--ochre); margin: 0; }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 18px 28px; }
+  .note h3 {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .note p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+  .note p + p { margin-top: 7px; }
+  .term { font-family: var(--font-mono); font-size: 0.88em; color: var(--ink); }
+
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+  footer { color: var(--ink-faint); font-size: 13px; max-width: 74ch; }
+  footer a { color: var(--ink-soft); }
+  @media (prefers-reduced-motion: reduce) { .census span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Flock simulation &middot; milestone 3</div>
+    <h1>Sheepdog Trial</h1>
+    <p class="standfirst">
+      Your pointer is the dog. Twenty-four ewes graze, drift and bunch by rules taken from
+      GPS studies of real flocks. Move into their flight zone and they will move away from
+      you, but through their own centre first, the way sheep actually do.
+    </p>
+  </header>
+
+  <div class="stage">
+    <div class="field">
+      <div class="canvas-shell"><canvas id="paddock" aria-label="A paddock of grazing sheep that respond to your pointer"></canvas></div>
+      <p class="hint" id="hint">Move the pointer onto the paddock to take the dog. Approach slowly and wide; come in fast and straight and you will scatter them.</p>
+    </div>
+
+    <div class="rail">
+      <section class="panel">
+        <h2>Flock state</h2>
+        <div class="census" id="census" role="img" aria-label="Proportion of the flock in each behaviour">
+          <span data-state="graze"></span><span data-state="alert"></span><span data-state="walk"></span><span data-state="run"></span>
+        </div>
+        <div class="legend">
+          <div><i style="background:var(--swatch-graze); outline:1px solid var(--rule)"></i><b>Grazing</b><var data-count="0">0%</var></div>
+          <div><i style="background:var(--swatch-alert)"></i><b>Alert</b><var data-count="1">0%</var></div>
+          <div><i style="background:var(--swatch-walk)"></i><b>Walking</b><var data-count="2">0%</var></div>
+          <div><i style="background:var(--swatch-run)"></i><b>Running</b><var data-count="3">0%</var></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Readouts</h2>
+        <dl class="figures">
+          <div class="figure"><dt>Cohesion</dt><dd id="r-cohesion">0.0</dd><small>body lengths to centre</small></div>
+          <div class="figure"><dt>Spacing</dt><dd id="r-spacing">0.0</dd><small>to nearest neighbour</small></div>
+          <div class="figure"><dt>Polarisation</dt><dd id="r-pol">0.00</dd><small>1.0 = all one way</small></div>
+          <div class="figure"><dt>Groups</dt><dd id="r-groups">1</dd><small>1 = flock intact</small></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Controls</h2>
+        <div class="controls">
+          <div class="row">
+            <label for="count">Flock size</label>
+            <input type="range" id="count" min="4" max="80" step="1" value="24">
+            <span class="val" id="count-val">24</span>
+          </div>
+          <div class="buttons">
+            <button type="button" id="newflock">New flock</button>
+            <button type="button" id="pause">Pause</button>
+          </div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="colours"> Colour sheep by behaviour</label>
+            <label class="check"><input type="checkbox" id="links"> Show who is following whom</label>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="notes">
+    <div class="note">
+      <h3>Work the flight zone</h3>
+      <p>
+        Each ewe carries her own <span class="term">flight zone</span>, about 3 body lengths
+        for a still pointer and 8 for a moving one, widened by nerves and shrunk by boldness.
+        Pressure at the edge moves them. Pressure released lets them settle.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Mind the point of balance</h3>
+      <p>
+        Press behind a ewe&rsquo;s shoulder and she goes forward; press ahead of it and she
+        stops or turns back. To send the flock left, be on its right.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Alarm travels</h3>
+      <p>
+        Fright spreads by sight from neighbour to neighbour, weaker at each hop, so one
+        startled ewe usually ripples and dies out while a real threat sweeps the whole flock.
+      </p>
+      <p>
+        Sheep see about 300 degrees. Come at them from the blind cone behind and they notice
+        late, then startle rather than easing away.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Do not dive in</h3>
+      <p>
+        Push into the middle and the flock fractures, with tail-enders breaking back past you.
+        Stragglers must be collected before the rest can be driven, which is what a real
+        outrun is for.
+      </p>
+    </div>
+  </div>
+
+  <hr>
+
+  <footer>
+    <p style="margin:0">
+      Behaviour follows the published field work: intermittent grazing and avalanche
+      re-packing (Ginelli et al. 2015), running to the flock centre rather than away from the
+      dog (King et al. 2012), the shepherd&rsquo;s repulsion and local-centre attraction model
+      (Str&ouml;mbom et al. 2014), rotating temporary leaders in walking lines
+      (G&oacute;mez-Nava et al. 2022), and driven-flock spacing and polarisation
+      (Jadhav et al. 2024). Distances are in sheep body lengths; outer ranges are compressed
+      to fit a paddock on a screen. This page is the simulation on its own. It is destined for
+      a transparent always-on-top window where the flock grazes across your desktop.
+    </p>
+  </footer>
+</div>
+
+<script>
+"use strict";(()=>{var it=Object.defineProperty;var ot=(n,e,t)=>e in n?it(n,e,{enumerable:!0,configurable:!0,writable:!0,value:t}):n[e]=t;var c=(n,e,t)=>ot(n,typeof e!="symbol"?e+"":e,t);var Xe=["graze","alert","walk","run","rest"];function Be(n){return 4+n*8}var U=8,ne=40,X=16,fe=class{constructor(e,t){c(this,"capacity");c(this,"count",0);c(this,"episodeCounter",0);c(this,"meanNnd",1);c(this,"histHead",0);c(this,"px");c(this,"py");c(this,"prevX");c(this,"prevY");c(this,"vx");c(this,"vy");c(this,"heading");c(this,"speed");c(this,"state");c(this,"stateTime");c(this,"pendingState");c(this,"pendingAt");c(this,"fear");c(this,"fearHist");c(this,"fearJump");c(this,"pressure");c(this,"lonely");c(this,"splitUntil");c(this,"arousal");c(this,"stamina");c(this,"leader");c(this,"leaderSide");c(this,"aloneTime");c(this,"stuckTime");c(this,"nextStepAt");c(this,"stepRemaining");c(this,"wanderHeading");c(this,"noiseAngle");c(this,"alertUntil");c(this,"walkUntil");c(this,"episodeId");c(this,"scale");c(this,"radius");c(this,"boldness");c(this,"gregarious");c(this,"reactionDelay");c(this,"fearDecay");c(this,"speedMult");c(this,"grazeBias");c(this,"nbr");c(this,"nbrDist");c(this,"nbrCount");c(this,"contacts");c(this,"contactDist");c(this,"contactCount");c(this,"nearestDist");c(this,"meanVisDist");c(this,"lcmX");c(this,"lcmY");c(this,"intent");c(this,"desiredSpeed");c(this,"dangerAhead");c(this,"interest");c(this,"danger");c(this,"slots");this.capacity=e,this.slots=t;let r=()=>new Float32Array(e);this.px=r(),this.py=r(),this.prevX=r(),this.prevY=r(),this.vx=r(),this.vy=r(),this.heading=r(),this.speed=r(),this.state=new Uint8Array(e),this.stateTime=r(),this.pendingState=new Int8Array(e).fill(-1),this.pendingAt=r(),this.fear=r(),this.fearHist=new Float32Array(e*ne),this.fearJump=r(),this.pressure=r(),this.lonely=new Uint8Array(e),this.splitUntil=r(),this.arousal=r(),this.stamina=r().fill(1),this.leader=new Int16Array(e).fill(-1),this.leaderSide=new Int8Array(e),this.aloneTime=r(),this.stuckTime=r(),this.nextStepAt=r(),this.stepRemaining=r(),this.wanderHeading=r(),this.noiseAngle=r(),this.alertUntil=r(),this.walkUntil=r(),this.episodeId=new Int32Array(e).fill(-1),this.scale=r(),this.radius=r(),this.boldness=r(),this.gregarious=r(),this.reactionDelay=r(),this.fearDecay=r(),this.speedMult=r(),this.grazeBias=r(),this.nbr=new Int16Array(e*U),this.nbrDist=new Float32Array(e*U),this.nbrCount=new Uint8Array(e),this.contacts=new Int16Array(e*X),this.contactDist=new Float32Array(e*X),this.contactCount=new Uint8Array(e),this.nearestDist=r(),this.meanVisDist=r(),this.lcmX=r(),this.lcmY=r(),this.intent=new Uint8Array(e),this.desiredSpeed=r(),this.dangerAhead=r(),this.interest=new Float32Array(e*t),this.danger=new Float32Array(e*t)}spawn(e,t){let r=Math.min(e.count,this.capacity);this.count=r;let l=e.world.width/2,a=e.world.height/2,o=Math.sqrt(r)*e.spawn.spacing*.5,b=e.personality;for(let i=0;i<r;i++){this.scale[i]=t.range(b.scale[0],b.scale[1]),this.radius[i]=e.sheep.contactRadius*this.scale[i],this.boldness[i]=t.range(b.boldness[0],b.boldness[1]),this.gregarious[i]=t.range(b.gregarious[0],b.gregarious[1]);let u=t.range(b.reactionDelay[0],b.reactionDelay[1]);this.reactionDelay[i]=u/(.5+.5*this.boldness[i]),this.fearDecay[i]=t.range(b.fearDecay[0],b.fearDecay[1]),this.speedMult[i]=t.range(b.speedMult[0],b.speedMult[1])*Math.pow(1/this.scale[i],.3),this.grazeBias[i]=t.range(b.grazeBias[0],b.grazeBias[1]);let s=l+t.normal()*o,d=a+t.normal()*o;s=Math.min(e.world.width-1,Math.max(1,s)),d=Math.min(e.world.height-1,Math.max(1,d)),this.px[i]=s,this.py[i]=d,this.prevX[i]=s,this.prevY[i]=d,this.vx[i]=0,this.vy[i]=0,this.speed[i]=0,this.heading[i]=t.angle(),this.wanderHeading[i]=this.heading[i],this.state[i]=0,this.stateTime[i]=t.range(0,10),this.pendingState[i]=-1,this.nextStepAt[i]=t.range(e.graze.stepInterval[0],e.graze.stepInterval[1])*this.grazeBias[i]*.5,this.stamina[i]=1,this.leader[i]=-1,this.fear[i]=0,this.arousal[i]=0,this.pressure[i]=0,this.splitUntil[i]=0}}};function ie(n,e){return n<=0?0:1-Math.exp(-n*e)}function lt(n){return n=n%(Math.PI*2),n>Math.PI&&(n-=Math.PI*2),n<-Math.PI&&(n+=Math.PI*2),n}var Ce=class{constructor(e,t){c(this,"cfg",e);c(this,"rng",t)}schedule(e,t,r,l,a){e.state[t]!==r&&e.pendingState[t]!==r&&(e.pendingState[t]=r,e.pendingAt[t]=a+l)}enter(e,t,r,l){let a=this.cfg,o=this.rng;switch(e.state[t]=r,e.stateTime[t]=0,e.pendingState[t]=-1,r){case 0:{e.leader[t]=-1,e.stepRemaining[t]=0,e.nextStepAt[t]=l+o.range(a.graze.stepInterval[0],a.graze.stepInterval[1])*e.grazeBias[t],e.episodeId[t]=-1;break}case 1:{e.leader[t]=-1;let b=(e.boldness[t]-a.personality.boldness[0])/Math.max(.001,a.personality.boldness[1]-a.personality.boldness[0]),i=a.alert.calmTime[1]+(a.alert.calmTime[0]-a.alert.calmTime[1])*Math.min(1,Math.max(0,b));e.alertUntil[t]=l+o.range(a.alert.duration[0],a.alert.duration[1])*.5+i*.5;break}case 2:{this.pickLeader(e,t),e.aloneTime[t]=0,e.stepRemaining[t]=0,e.leader[t]<0?(e.wanderHeading[t]=e.heading[t]+o.normal()*(a.walk.headingNoiseDeg*Math.PI/180),e.walkUntil[t]=l+o.range(a.walk.initiatorDuration[0],a.walk.initiatorDuration[1]),e.episodeId[t]=++e.episodeCounter):e.episodeId[t]=e.episodeId[e.leader[t]];break}case 3:{e.leader[t]=-1,e.stepRemaining[t]=0,e.episodeId[t]=-1,e.stuckTime[t]=0;break}case 4:break}}pickLeader(e,t){let r=Math.cos(e.heading[t]),l=Math.sin(e.heading[t]),a=-1,o=1e9,b=-1,i=1e9,u=t*U;for(let d=0;d<e.nbrCount[t];d++){let p=e.nbr[u+d],h=e.state[p];if(h!==2&&h!==3||e.leader[p]===t)continue;let g=e.nbrDist[u+d],M=e.px[p]-e.px[t],A=e.py[p]-e.py[t];M*r+A*l>0&&g<o&&(o=g,a=p),g<i&&(i=g,b=p)}let s=a>=0?a:b;if(e.leader[t]=s,s>=0)if(this.rng.chance(this.cfg.walk.behindProb))e.leaderSide[t]=0;else{let d=Math.cos(e.heading[s]),p=Math.sin(e.heading[s]),h=e.px[t]-e.px[s],g=e.py[t]-e.py[s];e.leaderSide[t]=d*g-p*h>=0?1:-1}}update(e,t,r,l){let a=this.cfg,o=this.rng,b=e.count,i=a.walk,u=a.run;for(let s=0;s<b;s++){e.stateTime[s]+=r,e.pendingState[s]>=0&&e.pendingAt[s]<=t&&this.enter(e,s,e.pendingState[s],t);let d=0,p=0,h=0,g=0,M=0,A=e.nbrCount[s]>0,v=s*U;for(let m=0;m<e.nbrCount[s];m++){let f=e.nbr[v+m],w=e.state[f],x=e.nbrDist[v+m];w===2?p++:w===3?h++:(d++,w===1&&M++),w!==3&&x<u.stop.closeDist&&g++,x>u.stop.packedDist&&(A=!1)}let T=p+h,I=e.reactionDelay[s]/(1+e.arousal[s]),z=e.state[s],y=a.fear,R=e.fear[s];if(z!==3&&R>=y.startleEnter&&e.fearJump[s]>=y.startleJump){this.schedule(e,s,3,I*.5,t);continue}if(z!==3){let m=0,f=e.nearestDist[s];f<1e5&&(m+=u.isolationRate*Math.max(0,f-u.isolationDist));let w=e.meanVisDist[s],x=Math.max(u.dispersalRef,u.dispersalRatio*e.meanNnd);if(w<1e5){let j=Math.max(0,w-x);m+=u.dispersalRate*j*j}let S=0,C=z===1&&e.stateTime[s]<u.mimetic.refractory;if(h>0&&!C){let j=w<1e5?Math.min(1,Math.max(0,(w-x)/x)):0,H=u.mimetic.g*(1-j);S=(Math.pow(1+u.mimetic.a*h,u.mimetic.d)-1)/u.mimetic.tau/Math.pow(1+d,H)}if(o.chance(ie(m+S,r))){this.schedule(e,s,3,h>0?I:0,t);continue}}switch(z){case 0:{if(R>=y.alertEnter||e.lonely[s]){this.schedule(e,s,1,I,t);break}if(l.mustRejoin[s]){this.schedule(e,s,2,I,t);break}if(M>0&&R>.05){let f=y.alertMimeticRate*(M/Math.max(1,e.nbrCount[s]));if(o.chance(ie(f,r))){this.schedule(e,s,1,I,t);break}}let m=i.spontaneousRate/Math.max(1,l.groupSize[s])*e.boldness[s];if(T>0&&(m+=i.mimetic.a*Math.pow(T,i.mimetic.b)/Math.pow(Math.max(1,d),i.mimetic.g)),o.chance(ie(m,r))){this.schedule(e,s,2,T>0?I:0,t);break}e.stepRemaining[s]<=0&&t>=e.nextStepAt[s]&&(e.stepRemaining[s]=o.range(a.graze.stepDist[0],a.graze.stepDist[1]),e.wanderHeading[s]=lt(e.heading[s]+o.normal()*(a.graze.headingNoiseDeg*Math.PI/180)),e.nextStepAt[s]=t+o.range(a.graze.stepInterval[0],a.graze.stepInterval[1])*e.grazeBias[s]);break}case 1:{if(R>=y.runEnter&&e.stuckTime[s]<u.stop.stuckTime){this.schedule(e,s,3,I*.5,t);break}if(e.speed[s]>u.stop.stuckSpeed&&(e.stuckTime[s]=Math.max(0,e.stuckTime[s]-r)),l.mustRejoin[s]&&e.stateTime[s]>.5){this.schedule(e,s,2,I,t);break}if(R>=y.walkEnter&&e.stateTime[s]>1&&o.chance(ie(y.walkRate,r))){this.schedule(e,s,2,I,t);break}if(R>=y.alertExit&&(e.alertUntil[s]=Math.max(e.alertUntil[s],t+1)),T>0){let m=i.mimetic.a*Math.pow(T,i.mimetic.b)/Math.pow(Math.max(1,d),i.mimetic.g);if(o.chance(ie(m,r))){this.schedule(e,s,2,I,t);break}}t>=e.alertUntil[s]&&!e.lonely[s]&&this.schedule(e,s,0,0,t);break}case 2:{if(R>=y.runEnter){this.schedule(e,s,3,I*.5,t);break}let m=i.stop.a*Math.pow(d,i.stop.b)/Math.pow(Math.max(1,T),i.stop.g);m+=i.spontaneousStopRate/(e.nbrCount[s]+1),l.mustRejoin[s]&&(m*=.2);let f=e.leader[s];if(f>=0){let w=e.px[f]-e.px[s],x=e.py[f]-e.py[s],S=Math.sqrt(w*w+x*x),C=e.state[f];C!==2&&C!==3?S<i.arrivalDist?m+=i.arrivalRate:(e.leader[s]=-1,e.wanderHeading[s]=e.heading[s],e.walkUntil[s]=t+5):S>12&&(e.leader[s]=-1,e.wanderHeading[s]=e.heading[s],e.walkUntil[s]=t+5)}else e.stateTime[s]<i.initiatorPersistTime&&(m*=i.initiatorPersistence),T===0?e.aloneTime[s]+=r:e.aloneTime[s]=0,e.aloneTime[s]>i.initiatorTimeout&&(m+=1),t>e.walkUntil[s]&&(m+=1);o.chance(ie(m,r))&&this.schedule(e,s,0,e.leader[s]<0?0:I*.5,t);break}case 3:{let m=Math.pow(1+u.stop.a*g,u.stop.d)/u.stop.tau;e.stateTime[s]>u.stop.maxDuration&&R<.5&&(m+=2),e.speed[s]<u.stop.stuckSpeed?e.stuckTime[s]+=r:e.stuckTime[s]=0;let f=e.stuckTime[s]>u.stop.stuckTime;R>=y.runEnter&&!f?m=0:f&&(m+=1.5),R<.2&&A&&e.stateTime[s]>.5?this.schedule(e,s,1,0,t):o.chance(ie(m,r))&&this.schedule(e,s,1,I*.5,t);break}case 4:break}}}};function Ye(){return{seed:1,count:20,dt:1/30,world:{width:40,height:22},spawn:{spacing:1.3},sheep:{contactRadius:.45,kVisible:6,fovDeg:300,occlusionDeg:12,gatherCell:4},personality:{scale:[.9,1.1],boldness:[.6,1.4],gregarious:[.7,1.3],reactionDelay:[.3,1.2],fearDecay:[.7,1.3],speedMult:[.88,1.12],grazeBias:[.7,1.3]},graze:{stepInterval:[5,20],stepDist:[.5,2],stepSpeed:.3,headingNoiseDeg:30,repelDist:2.5,repelWeight:1,rejoinDist:4,rejoinWeight:.6},walk:{speed:1.15,followGap:1.4,behindProb:.8,spontaneousRate:.05,mimetic:{a:.32,b:.61,g:.71},stop:{a:.42,b:.48,g:.54},initiatorPersistence:.1,initiatorPersistTime:10,initiatorTimeout:15,initiatorDuration:[6,15],spontaneousStopRate:.05,arrivalRate:2,arrivalDist:1.5,headingNoiseDeg:15,cohesionWeight:.4},run:{speed:3.5,sprintSpeed:6,isolationDist:8,isolationRate:.02,dispersalRef:3.5,dispersalRatio:2,dispersalRate:.004,mimetic:{tau:4,a:1,d:2,g:1,refractory:1.5},stop:{tau:3,a:2.5,d:2.5,closeDist:1.5,packedDist:2,maxDuration:6,stuckSpeed:.6,stuckTime:1.5},cohesion:1.05,cohesionCentroidMix:.5,repel:1,repelDist:1.2,align:.3,threatRepel:1.4,noise:.3,noiseTau:1.5,staminaDrain:.35,staminaRefill:.1},alert:{duration:[1,5],calmTime:[2,6]},kinematics:{turnRateDeg:{graze:90,alert:90,walk:180,run:360},accelTau:{graze:.4,walk:.4,run:.3},decelTau:{graze:.8,walk:.8,run:.6},movingThreshold:.15},steering:{slots:16,maskMargin:.1,neighbourDangerDist:1.2,neighbourDangerWeight:.8},pressure:{lookahead:.2,idleSpeed:.3,dogSpeed:2,zoneIdle:3,zoneDog:8,outerScale:1.5,innerScale:.35,speedGain:.6,directnessGain:.5,blindFactor:.3,blindProximity:2,contagionGain:.9,contagionThreshold:.35,contagionBypassFear:.5,alarmedThreshold:.4,towardBoost:1.6,transmitCeiling:.85,fearTau:12,fearTauPacked:6,packedDist:2,arousalGain:.6,arousalTau:120,lonelyFear:.3},fear:{alertEnter:.15,alertExit:.12,walkEnter:.25,runEnter:.45,startleEnter:.6,startleJump:.3,alertMimeticRate:1,walkRate:1.5},flee:{dangerWeight:1.4,interestWeight:1.2,centroidBend:.8,centroidBendPacked:1.6,balanceInterest:.4,balanceDanger:.5,balanceAngleDeg:70,splitPressure:.85,splitDuration:3,splitNeighbours:3,lonelyDangerScale:.5,lonelyCohesion:2},group:{linkDist:6,comfortable:4,strayDist:8,rejoinWeight:1.1,rejoinRunWeight:.9,threatMemory:12},fences:{dangerStart:3,dangerFull:.5},pbd:{iterations:3,stiffness:.6,slack:.97,friction:.3,xsph:.3},behaviourEnabled:!0}}function ue(n,e){if(!e)return n;let t={...n};for(let r of Object.keys(e)){let l=e[r],a=n[r];l!==void 0&&(l!==null&&typeof l=="object"&&!Array.isArray(l)&&a!==null&&typeof a=="object"&&!Array.isArray(a)?t[r]=ue(a,l):t[r]=l)}return t}var Ie=class{constructor(e,t,r,l){c(this,"cols");c(this,"rows");c(this,"cellSize");c(this,"cellStart");c(this,"cellItems");c(this,"cellOf");c(this,"fill");this.cellSize=r,this.cols=Math.max(1,Math.ceil(e/r)),this.rows=Math.max(1,Math.ceil(t/r)),this.cellStart=new Int32Array(this.cols*this.rows+1),this.cellItems=new Int32Array(l),this.cellOf=new Int32Array(l),this.fill=new Int32Array(this.cols*this.rows)}cellX(e){let t=Math.floor(e/this.cellSize);return t<0?0:t>=this.cols?this.cols-1:t}cellY(e){let t=Math.floor(e/this.cellSize);return t<0?0:t>=this.rows?this.rows-1:t}build(e,t,r){let l=this.cellStart;l.fill(0);for(let a=0;a<r;a++){let o=this.cellY(t[a])*this.cols+this.cellX(e[a]);this.cellOf[a]=o,l[o+1]++}for(let a=0;a<l.length-1;a++)l[a+1]+=l[a];for(let a=0;a<this.fill.length;a++)this.fill[a]=l[a];for(let a=0;a<r;a++)this.cellItems[this.fill[this.cellOf[a]]++]=a}};var we=class{constructor(e){c(this,"parent");c(this,"size");c(this,"groupOf");c(this,"groupSize");c(this,"unease");c(this,"mustRejoin");c(this,"groupCount",1);this.parent=new Int32Array(e),this.size=new Int32Array(e),this.groupOf=new Int32Array(e),this.groupSize=new Int32Array(e),this.unease=new Float32Array(e),this.mustRejoin=new Uint8Array(e)}find(e){let t=this.parent;for(;t[e]!==e;)t[e]=t[t[e]],e=t[e];return e}update(e,t,r,l){let a=e.count,o=0,b=0;for(let u=0;u<a;u++)o+=e.px[u],b+=e.py[u];o/=Math.max(1,a),b/=Math.max(1,a);for(let u=0;u<a;u++)this.parent[u]=u,this.size[u]=1;for(let u=0;u<a;u++){let s=u*X;for(let d=0;d<e.contactCount[u];d++){let p=e.contacts[s+d];if(p<=u||e.contactDist[s+d]>t)continue;let h=this.find(u),g=this.find(p);h!==g&&(this.size[h]<this.size[g]?(this.parent[h]=g,this.size[g]+=this.size[h]):(this.parent[g]=h,this.size[h]+=this.size[g]))}}let i=0;for(let u=0;u<a;u++){let s=this.find(u);s===u&&i++,this.groupOf[u]=s;let d=this.size[s];this.groupSize[u]=d;let p=1-d/Math.max(1,a);this.unease[u]=Math.min(1,Math.max(0,p));let h=Math.hypot(e.px[u]-o,e.py[u]-b)>l;this.mustRejoin[u]=p>.5&&d<r&&h?1:0}this.groupCount=i}};var oe=new Int32Array(1024);function Ve(n){for(;oe[n]!==n;)oe[n]=oe[oe[n]],n=oe[n];return n}function _e(n,e,t,r=.15,l=4){let a=n.count,o=0,b=0;for(let y=0;y<a;y++)o+=n.px[y],b+=n.py[y];o/=Math.max(1,a),b/=Math.max(1,a);let i=0,u=0,s=0,d=0,p=0,h=0,g=0,M=0,A=0,v=0,T=[0,0,0,0,0];for(let y=0;y<a;y++){i+=Math.hypot(n.px[y]-o,n.py[y]-b),u+=Math.min(n.nearestDist[y],1e3);let R=n.speed[y];M+=R;let m=Math.min(n.meanVisDist[y],1e3);if(A+=m,m>v&&(v=m),R>r&&(p++,s+=n.vx[y]/R,d+=n.vy[y]/R),n.intent[y]===0&&R<r){let f=n.heading[y]-e[y];f=Math.atan2(Math.sin(f),Math.cos(f)),h+=Math.abs(f)*(180/Math.PI),g++}T[n.state[y]]++}for(let y=0;y<T.length;y++)T[y]/=Math.max(1,a);for(let y=0;y<a;y++)oe[y]=y;let I=0;for(let y=0;y<a;y++)for(let R=y+1;R<a;R++){let m=Math.hypot(n.px[y]-n.px[R],n.py[y]-n.py[R]);if(m<l){let w=Ve(y),x=Ve(R);w!==x&&(oe[w]=x)}let f=n.radius[y]+n.radius[R]-m;f>I&&(I=f)}let z=0;for(let y=0;y<a;y++)Ve(y)===y&&z++;return{time:t,cohesion:i/Math.max(1,a),nnd:u/Math.max(1,a),polarisation:p>0?Math.hypot(s,d)/p:0,splits:z,jitter:g>0?h/g:0,overlap:I,fractions:T,centroidX:o,centroidY:b,movingFraction:p/Math.max(1,a),meanSpeed:M/Math.max(1,a),meanVisDist:A/Math.max(1,a),maxVisDist:v}}var Pe=class{constructor(e,t){c(this,"cfg",e);c(this,"tmpVx");c(this,"tmpVy");this.tmpVx=new Float32Array(t),this.tmpVy=new Float32Array(t)}update(e,t){let r=this.cfg,l=e.count,a=r.kinematics,{px:o,py:b,vx:i,vy:u,prevX:s,prevY:d}=e;for(let h=0;h<l;h++){let g=e.state[h],M=e.desiredSpeed[h],A=Math.cos(e.heading[h])*M,v=Math.sin(e.heading[h])*M,T=M>e.speed[h],I=g===3?T?a.accelTau.run:a.decelTau.run:g===2?T?a.accelTau.walk:a.decelTau.walk:T?a.accelTau.graze:a.decelTau.graze,z=1-Math.exp(-t/I);i[h]+=(A-i[h])*z,u[h]+=(v-u[h])*z,s[h]=o[h],d[h]=b[h],o[h]+=i[h]*t,b[h]+=u[h]*t}this.solveContacts(e,l);for(let h=0;h<l;h++)i[h]=(o[h]-s[h])/t,u[h]=(b[h]-d[h])/t;let p=r.pbd.xsph;if(p>0){for(let h=0;h<l;h++){this.tmpVx[h]=i[h],this.tmpVy[h]=u[h];let g=e.state[h];if(g!==0&&g!==1&&g!==4)continue;let M=h*X,A=0,v=0,T=0;for(let I=0;I<e.contactCount[h];I++){let z=e.contacts[M+I],y=e.radius[h]+e.radius[z]+.2;e.contactDist[M+I]>y||(A+=i[z]-i[h],v+=u[z]-u[h],T++)}T>0&&(this.tmpVx[h]+=p*A/T,this.tmpVy[h]+=p*v/T)}for(let h=0;h<l;h++)i[h]=this.tmpVx[h],u[h]=this.tmpVy[h]}for(let h=0;h<l;h++){let g=Math.hypot(i[h],u[h]);e.speed[h]=g,e.state[h]===0&&e.stepRemaining[h]>0&&(e.stepRemaining[h]-=g*t),e.state[h]===3&&g>r.run.speed*1.1?e.stamina[h]=Math.max(0,e.stamina[h]-r.run.staminaDrain*t):e.stamina[h]=Math.min(1,e.stamina[h]+r.run.staminaRefill*t)}}solveContacts(e,t){let r=this.cfg,l=r.pbd,{px:a,py:o,prevX:b,prevY:i,radius:u}=e,s=r.world;for(let d=0;d<l.iterations;d++){for(let p=0;p<t;p++){let h=p*X;for(let g=0;g<e.contactCount[p];g++){let M=e.contacts[h+g];if(M<=p)continue;let A=a[p]-a[M],v=o[p]-o[M],T=Math.sqrt(A*A+v*v),I=(u[p]+u[M])*l.slack;if(T>=I)continue;T<1e-5&&(A=Math.cos(e.heading[p]),v=Math.sin(e.heading[p]),T=1e-5);let z=A/T,y=v/T,R=(I-T)*l.stiffness*.5;if(a[p]+=z*R,o[p]+=y*R,a[M]-=z*R,o[M]-=y*R,l.friction>0){let m=a[p]-b[p]-(a[M]-b[M]),f=o[p]-i[p]-(o[M]-i[M]),w=-y,x=z,S=(m*w+f*x)*l.friction*.5;a[p]-=w*S,o[p]-=x*S,a[M]+=w*S,o[M]+=x*S}}}for(let p=0;p<t;p++){let h=u[p];a[p]<h?a[p]=h:a[p]>s.width-h&&(a[p]=s.width-h),o[p]<h?o[p]=h:o[p]>s.height-h&&(o[p]=s.height-h)}}}};var Ae=96,me=new Int32Array(Ae),K=new Float32Array(Ae),ze=new Float32Array(Ae),Ee=new Float32Array(Ae),Ze=new Float32Array(U),Qe=new Float32Array(U),ke=1e6;function et(n,e,t,r,l){if(n>=Ae){if(t>=K[n-1])return n;n--}let a=n;for(;a>0&&K[a-1]>t;)me[a]=me[a-1],K[a]=K[a-1],ze[a]=ze[a-1],Ee[a]=Ee[a-1],a--;return me[a]=e,K[a]=t,ze[a]=r,Ee[a]=l,n+1}function Le(n,e,t){let r=n.count,l=Math.min(t.sheep.kVisible,U),a=Math.cos(t.sheep.fovDeg/2*(Math.PI/180)),o=Math.cos(t.sheep.occlusionDeg*(Math.PI/180)),b=1,{px:i,py:u}=n,s=0;for(let d=0;d<r;d++){let p=i[d],h=u[d],g=0,M=e.cellX(p),A=e.cellY(h);for(let w=A-1;w<=A+1;w++)if(!(w<0||w>=e.rows))for(let x=M-1;x<=M+1;x++){if(x<0||x>=e.cols)continue;let S=w*e.cols+x;for(let C=e.cellStart[S];C<e.cellStart[S+1];C++){let j=e.cellItems[C];if(j===d)continue;let H=i[j]-p,D=u[j]-h,F=Math.sqrt(H*H+D*D),P=F>1e-6?1/F:0;g=et(g,j,F,H*P,D*P)}}if(g<l&&r>1){g=0;for(let w=0;w<r;w++){if(w===d)continue;let x=i[w]-p,S=u[w]-h,C=Math.sqrt(x*x+S*S),j=C>1e-6?1/C:0;g=et(g,w,C,x*j,S*j)}}n.nearestDist[d]=g>0?K[0]:ke,g>0&&(s+=K[0]);let v=0,T=n.radius[d];for(let w=0;w<g&&v<X;w++){let x=me[w];if(K[w]<T+n.radius[x]+b)n.contacts[d*X+v]=x,n.contactDist[d*X+v]=K[w],v++;else break}n.contactCount[d]=v;let I=Math.cos(n.heading[d]),z=Math.sin(n.heading[d]),y=0,R=0,m=0,f=0;for(let w=0;w<g&&y<l;w++){let x=ze[w],S=Ee[w];if(I*x+z*S<a)continue;let C=!1;for(let H=0;H<y;H++)if(Ze[H]*x+Qe[H]*S>o){C=!0;break}if(C)continue;Ze[y]=x,Qe[y]=S;let j=me[w];n.nbr[d*U+y]=j,n.nbrDist[d*U+y]=K[w],R+=K[w],m+=i[j],f+=u[j],y++}if(y===0&&g>0){let w=Math.min(l,g);for(let x=0;x<w;x++){let S=me[x];n.nbr[d*U+x]=S,n.nbrDist[d*U+x]=K[x],R+=K[x],m+=i[S],f+=u[S]}y=w}n.nbrCount[d]=y,y>0?(n.meanVisDist[d]=R/y,n.lcmX[d]=m/y,n.lcmY[d]=f/y):(n.meanVisDist[d]=ke,n.lcmX[d]=p,n.lcmY[d]=h)}n.meanNnd=r>1?s/r:1}function ht(n,e,t){let r=Math.min(1,Math.max(0,(t-n)/(e-n)));return r*r*(3-2*r)}var ve=class{constructor(e){c(this,"cfg",e)}setConfig(e){this.cfg=e}update(e,t,r,l){let a=this.cfg,o=a.pressure,b=e.count,i=Math.cos((360-a.sheep.fovDeg)/2*(Math.PI/180)),u=e.histHead;for(let s=0;s<b;s++){let d=e.px[s],p=e.py[s],h=0;if(t.active){let f=t.x+t.vx*o.lookahead,w=t.y+t.vy*o.lookahead,x=f-d,S=w-p,C=Math.hypot(x,S),j=Math.min(1,Math.max(0,(t.speed-o.idleSpeed)/(o.dogSpeed-o.idleSpeed))),D=(o.zoneIdle+(o.zoneDog-o.zoneIdle)*j)*(.8+.4*e.arousal[s])/e.boldness[s],F=0;t.speed>.001&&C>.001&&(F=-(x/C*(t.vx/t.speed)+S/C*(t.vy/t.speed)));let P=1+o.speedGain*Math.min(2,t.speed/a.run.speed),N=1+o.directnessGain*Math.max(0,F),E=Math.cos(e.heading[s]),W=Math.sin(e.heading[s]),q=(C>.001?(E*x+W*S)/C:1)<-i&&C>o.blindProximity?o.blindFactor:1;h=Math.min(1,ht(D*o.outerScale,D*o.innerScale,C)*P*N*q)}e.pressure[s]=h;let g=0,M=s*U,A=e.nbrCount[s];if(A>0){let f=Math.min(ne-1,Math.max(1,Math.round(e.reactionDelay[s]/r))),w=(u-f+ne)%ne,x=0,S=0;for(let H=0;H<A;H++){let D=e.nbr[M+H],F=e.fearHist[D*ne+w],P=e.state[D]===3;if((F>o.alarmedThreshold||P)&&x++,F<=.01)continue;let N=e.nbrDist[M+H],E=1/Math.log(2+N),W=!1;if(P){let q=e.px[D]-e.px[s],O=e.py[D]-e.py[s],J=Math.hypot(q,O);if(J>.001){let $=e.heading[D];W=-(Math.cos($)*q+Math.sin($)*O)/J>.5}}let _=Math.min(F*o.transmitCeiling,o.contagionGain*E*F*(W?o.towardBoost:1));_>S&&(S=_)}let C=x/A,j=o.contagionThreshold*e.boldness[s];(C>=j||e.fear[s]>o.contagionBypassFear)&&(g=S)}let v=e.nearestDist[s]>a.run.isolationDist;e.lonely[s]=v?1:0;let T=v?o.lonelyFear:0,I=e.fear[s],z=Math.min(1,Math.max(I,h,g,T)),R=(e.meanVisDist[s]<o.packedDist?o.fearTauPacked:o.fearTau)*e.fearDecay[s];z*=Math.exp(-r/R),z<T&&(z=T),e.fearJump[s]=z-I,e.fear[s]=z;let m=Math.min(1,Math.max(e.arousal[s],o.arousalGain*z));m*=Math.exp(-r/o.arousalTau),e.arousal[s]=m}for(let s=0;s<b;s++)e.fearHist[s*ne+u]=e.fear[s];e.histHead=(u+1)%ne}};var Se=class{constructor(e){c(this,"s");c(this,"spare",null);this.s=e|0||2654435769}next(){this.s=this.s+1831565813|0;let e=this.s;return e=Math.imul(e^e>>>15,e|1),e^=e+Math.imul(e^e>>>7,e|61),((e^e>>>14)>>>0)/4294967296}range(e,t){return e+(t-e)*this.next()}int(e){return Math.floor(this.next()*e)}chance(e){return this.next()<e}normal(){if(this.spare!==null){let a=this.spare;return this.spare=null,a}let e=0,t=0;for(;e===0;)e=this.next();t=this.next();let r=Math.sqrt(-2*Math.log(e)),l=2*Math.PI*t;return this.spare=r*Math.sin(l),r*Math.cos(l)}expo(e){return-Math.log(1-this.next())/e}angle(){return this.next()*Math.PI*2}};var ce=Math.PI/180;function Ne(n){return n=n%(Math.PI*2),n>Math.PI&&(n-=Math.PI*2),n<-Math.PI&&(n+=Math.PI*2),n}function tt(n,e,t){let r=Ne(e-n);return r>t?n+t:r<-t?n-t:e}var je=class{constructor(e,t){c(this,"cfg",e);c(this,"rng",t);c(this,"slotCos");c(this,"slotSin");c(this,"slots");this.slots=e.steering.slots,this.slotCos=new Float32Array(this.slots),this.slotSin=new Float32Array(this.slots);for(let r=0;r<this.slots;r++){let l=r/this.slots*Math.PI*2;this.slotCos[r]=Math.cos(l),this.slotSin[r]=Math.sin(l)}}lobe(e,t,r,l,a){if(!(a<=0))for(let o=0;o<this.slots;o++){let b=a*(this.slotCos[o]*r+this.slotSin[o]*l);b>e[t+o]&&(e[t+o]=b)}}resolve(e,t,r){let l=this.slots,a=e.interest,o=e.danger,b=1/0;for(let v=0;v<l;v++)o[r+v]<b&&(b=o[r+v]);let i=b+this.cfg.steering.maskMargin,u=-1,s=1e-4;for(let v=0;v<l;v++){if(o[r+v]>i)continue;let T=a[r+v];T>s&&(s=T,u=v)}if(u<0){let v=Math.round(Ne(e.heading[t])/(Math.PI*2/l));return e.dangerAhead[t]=o[r+(v%l+l)%l],NaN}let d=u===0?l-1:u-1,p=u===l-1?0:u+1,h=o[r+d]>i?0:a[r+d],g=o[r+p]>i?0:a[r+p],M=h-2*s+g,A=0;return Math.abs(M)>1e-6&&(A=Math.max(-.5,Math.min(.5,.5*(h-g)/M))),e.dangerAhead[t]=o[r+u],(u+A)/l*Math.PI*2}update(e,t,r,l,a,o,b){let i=this.cfg,u=e.count,s=this.slots,d=e.interest,p=e.danger,h=i.world,g=i.fences,M=i.kinematics,A=i.flee,v=i.group,T=Math.cos(A.balanceAngleDeg*ce),I=t.x+t.vx*i.pressure.lookahead,z=t.y+t.vy*i.pressure.lookahead,y=0,R=0;for(let m=0;m<u;m++)y+=e.px[m],R+=e.py[m];y/=Math.max(1,u),R/=Math.max(1,u);for(let m=0;m<u;m++){let f=m*s;d.fill(0,f,f+s),p.fill(0,f,f+s);let w=e.state[m];e.intent[m]=0;let x=e.px[m],S=e.py[m],C=0,j=M.turnRateDeg.graze*ce;switch(w){case 0:{if(e.stepRemaining[m]>0){if(C=i.graze.stepSpeed*e.speedMult[m],this.lobe(d,f,Math.cos(e.wanderHeading[m]),Math.sin(e.wanderHeading[m]),.6),e.nearestDist[m]>i.graze.rejoinDist){let F=e.lcmX[m]-x,P=e.lcmY[m]-S,N=Math.hypot(F,P);N>.001&&this.lobe(d,f,F/N,P/N,i.graze.rejoinWeight*e.gregarious[m])}this.rejoinLobe(e,l,m,f,y,R,x,S,v.rejoinWeight);let D=m*X;for(let F=0;F<e.contactCount[m];F++){let P=e.contactDist[D+F];if(P<i.graze.repelDist){let N=e.contacts[D+F],E=e.px[N]-x,W=e.py[N]-S,_=P>.001?1/P:0;this.lobe(p,f,E*_,W*_,i.graze.repelWeight*(1-P/i.graze.repelDist))}}}break}case 1:{j=M.turnRateDeg.alert*ce;let D=0,F=0;t.active&&e.pressure[m]>.02?(D=I-x,F=z-S):b?(D=a-x,F=o-S):l.unease[m]>.2&&(D=y-x,F=R-S),Math.hypot(D,F)>.001&&(e.intent[m]=1,e.heading[m]=Ne(tt(e.heading[m],Math.atan2(F,D),j*r))),e.desiredSpeed[m]=0;continue}case 2:{j=M.turnRateDeg.walk*ce;let D=e.leader[m],F=i.walk.speed*e.speedMult[m];if(D>=0){let P=Math.cos(e.heading[D]),N=Math.sin(e.heading[D]),E=i.walk.followGap,W,_;if(e.leaderSide[m]===0)W=e.px[D]-P*E,_=e.py[D]-N*E;else{let Z=e.leaderSide[m];W=e.px[D]-P*E*.3-N*E*.8*Z,_=e.py[D]-N*E*.3+P*E*.8*Z}let q=W-x,O=_-S,J=Math.hypot(q,O),$=Math.hypot(e.px[D]-x,e.py[D]-S);J>.15&&this.lobe(d,f,q/J,O/J,1),C=Math.max(0,Math.min(F*1.3,F*($/E))),J<.15&&(C=0)}else{e.wanderHeading[m]+=this.rng.normal()*(i.walk.headingNoiseDeg*ce)*Math.sqrt(r),this.lobe(d,f,Math.cos(e.wanderHeading[m]),Math.sin(e.wanderHeading[m]),.8);let P=e.lcmX[m]-x,N=e.lcmY[m]-S,E=Math.hypot(P,N);E>2&&this.lobe(d,f,P/E,N/E,i.walk.cohesionWeight*e.gregarious[m]),this.rejoinLobe(e,l,m,f,y,R,x,S,v.rejoinWeight),C=F}this.neighbourDanger(e,m,f,i.steering.neighbourDangerDist,i.steering.neighbourDangerWeight);break}case 3:{j=M.turnRateDeg.run*ce;let D=i.run,F=D.cohesionCentroidMix;e.splitUntil[m]>0&&(F=0);let P=e.lcmX[m]*(1-F)+y*F,N=e.lcmY[m]*(1-F)+R*F;if(e.splitUntil[m]>0){let B=0,Y=0,V=0,Q=m*U;for(let Ue=0;Ue<e.nbrCount[m]&&V<A.splitNeighbours;Ue++){let $e=e.nbr[Q+Ue];B+=e.px[$e],Y+=e.py[$e],V++}V>0&&(P=B/V,N=Y/V)}let E=0,W=0,_=P-x,q=N-S,O=Math.hypot(_,q),J=D.cohesion*(1+e.fear[m])*e.gregarious[m]*Math.min(1,O/A.centroidBendPacked);e.lonely[m]&&(J*=A.lonelyCohesion),O>.5&&(E+=_/O*J,W+=q/O*J);let $=0,Z=0,le=m*X;for(let B=0;B<e.contactCount[m];B++){let Y=e.contactDist[le+B];if(Y<D.repelDist){let V=e.contacts[le+B],Q=Y>.001?1/Y:0;$+=(x-e.px[V])*Q,Z+=(S-e.py[V])*Q}}let k=Math.hypot($,Z);k>1e-6&&(E+=$/k*D.repel*Math.min(1,k),W+=Z/k*D.repel*Math.min(1,k));let he=0,ee=0,Fe=m*U;for(let B=0;B<e.nbrCount[m];B++){let Y=e.nbr[Fe+B];e.state[Y]===3&&(he+=Math.cos(e.heading[Y]),ee+=Math.sin(e.heading[Y]))}let Ge=Math.hypot(he,ee);Ge>1e-6&&(E+=he/Ge*D.align,W+=ee/Ge*D.align);let Je=l.unease[m];if(Je>.05){let B=y-x,Y=R-S,V=Math.hypot(B,Y);if(V>.001){let Q=v.rejoinRunWeight*Je;E+=B/V*Q,W+=Y/V*Q}}if(t.active&&e.pressure[m]>.01){let B=x-I,Y=S-z,V=Math.hypot(B,Y);if(V>.001){let Q=D.threatRepel*e.pressure[m];E+=B/V*Q,W+=Y/V*Q}}e.noiseAngle[m]+=-e.noiseAngle[m]/D.noiseTau*r+this.rng.normal()*.8*Math.sqrt(r);let Ke=e.heading[m]+e.noiseAngle[m];E+=Math.cos(Ke)*D.noise,W+=Math.sin(Ke)*D.noise;let He=Math.hypot(E,W);He>1e-6&&this.lobe(d,f,E/He,W/He,1),C=(e.stamina[m]>.2?D.speed:D.speed*.7)*e.speedMult[m],this.neighbourDanger(e,m,f,1,.6);break}case 4:break}if(t.active&&e.pressure[m]>.01&&C>0){let D=I-x,F=z-S,P=Math.hypot(D,F);if(P>.001){let N=D/P,E=F/P,W=e.pressure[m],_=e.lonely[m]?A.lonelyDangerScale:1;this.lobe(p,f,N,E,A.dangerWeight*W*_);let q=-N,O=-E,J=e.lcmX[m]-x,$=e.lcmY[m]-S,Z=Math.hypot(J,$);if(Z>.001){let ee=Math.min(1,Z/A.centroidBendPacked),Fe=A.centroidBend*(1+e.fear[m])*ee;q+=J/Z*Fe,O+=$/Z*Fe}if(w!==3){let ee=Math.hypot(q,O);ee>.001&&this.lobe(d,f,q/ee,O/ee,A.interestWeight*W)}let le=Math.cos(e.heading[m]),k=Math.sin(e.heading[m]),he=le*N+k*E;he<-T?this.lobe(d,f,le,k,A.balanceInterest*W):he>T&&this.lobe(p,f,le,k,A.balanceDanger*W),W>A.splitPressure&&(e.splitUntil[m]=A.splitDuration)}}if(e.splitUntil[m]>0&&(e.splitUntil[m]=Math.max(0,e.splitUntil[m]-r)),C>0){let D=g.dangerStart,F=g.dangerFull,P=N=>N>=D?0:N<=F?1:(D-N)/(D-F);this.lobe(p,f,-1,0,P(x)),this.lobe(p,f,1,0,P(h.width-x)),this.lobe(p,f,0,-1,P(S)),this.lobe(p,f,0,1,P(h.height-S))}let H=NaN;if(C>0&&(H=this.resolve(e,m,f)),Number.isNaN(H)){C>0&&(C=0),e.desiredSpeed[m]=0;continue}e.intent[m]=1,e.heading[m]=Ne(tt(e.heading[m],H,j*r)),e.desiredSpeed[m]=C*(1-Math.min(1,e.dangerAhead[m]))}}rejoinLobe(e,t,r,l,a,o,b,i,u){let s=t.unease[r];if(s<=.05)return;let d=a-b,p=o-i,h=Math.hypot(d,p);h<.001||this.lobe(e.interest,l,d/h,p/h,u*s*e.gregarious[r])}neighbourDanger(e,t,r,l,a){let o=t*X,b=e.px[t],i=e.py[t];for(let u=0;u<e.contactCount[t];u++){let s=e.contactDist[o+u];if(s<l){let d=e.contacts[o+u],p=s>.001?1/s:0;this.lobe(e.danger,r,(e.px[d]-b)*p,(e.py[d]-i)*p,a*(1-s/l))}}}};var de=512,pe=class{constructor(e){c(this,"cfg");c(this,"rng");c(this,"flock");c(this,"grid");c(this,"behaviour");c(this,"steering");c(this,"motion");c(this,"perception");c(this,"groups");c(this,"lastThreatX",0);c(this,"lastThreatY",0);c(this,"threatMemory",0);c(this,"threat",{active:!1,x:0,y:0,vx:0,vy:0,speed:0});c(this,"prevHeading");c(this,"time",0);c(this,"step",0);c(this,"pointerX",NaN);c(this,"pointerY",NaN);this.cfg=ue(Ye(),e),this.rng=new Se(this.cfg.seed),this.flock=new fe(de,this.cfg.steering.slots),this.grid=new Ie(this.cfg.world.width,this.cfg.world.height,this.cfg.sheep.gatherCell,de),this.behaviour=new Ce(this.cfg,this.rng),this.steering=new je(this.cfg,this.rng),this.motion=new Pe(this.cfg,de),this.perception=new ve(this.cfg),this.groups=new we(de),this.prevHeading=new Float32Array(de),this.flock.spawn(this.cfg,this.rng);for(let t=0;t<20;t++)this.grid.build(this.flock.px,this.flock.py,this.flock.count),Le(this.flock,this.grid,this.cfg),this.flock.prevX.set(this.flock.px),this.flock.prevY.set(this.flock.py),this.motion.solveContacts(this.flock,this.flock.count);this.prevHeading.set(this.flock.heading)}tick(){let e=this.flock,t=this.cfg.dt;this.prevHeading.set(e.heading.subarray(0,e.count)),this.grid.build(e.px,e.py,e.count),Le(e,this.grid,this.cfg),this.updateThreat(t),this.groups.update(e,this.cfg.group.linkDist,this.cfg.group.comfortable,this.cfg.group.strayDist),this.perception.update(e,this.threat,t,this.groups),this.cfg.behaviourEnabled&&this.behaviour.update(e,this.time,t,this.groups),this.steering.update(e,this.threat,t,this.groups,this.lastThreatX,this.lastThreatY,this.threatMemory>0),this.motion.update(e,t),this.time+=t,this.step++}run(e){let t=Math.round(e/this.cfg.dt);for(let r=0;r<t;r++)this.tick()}setPointer(e,t){this.pointerX=e,this.pointerY=t}updateThreat(e){let t=this.threat,r=Number.isFinite(this.pointerX)&&Number.isFinite(this.pointerY);if(this.threatMemory=Math.max(0,this.threatMemory-e),!r){t.active=!1,t.vx=0,t.vy=0,t.speed=0;return}if(this.lastThreatX=this.pointerX,this.lastThreatY=this.pointerY,this.threatMemory=this.cfg.group.threatMemory,!t.active){t.x=this.pointerX,t.y=this.pointerY,t.vx=0,t.vy=0,t.speed=0,t.active=!0;return}let l=(this.pointerX-t.x)/e,a=(this.pointerY-t.y)/e,o=1-Math.exp(-e/.06);t.vx+=(l-t.vx)*o,t.vy+=(a-t.vy)*o,t.speed=Math.hypot(t.vx,t.vy),t.x=this.pointerX,t.y=this.pointerY}applyConfig(e){let t={seed:this.cfg.seed,count:this.cfg.count,world:this.cfg.world,steering:{slots:this.cfg.steering.slots}};this.cfg=ue(ue(this.cfg,e),t),this.behaviour.cfg=this.cfg,this.steering.cfg=this.cfg,this.motion.cfg=this.cfg,this.perception.setConfig(this.cfg)}metrics(){return _e(this.flock,this.prevHeading,this.time,this.cfg.kinematics.movingThreshold)}writeSnapshot(e){let t=this.flock.count,r=Be(t);(!e||e.length<r)&&(e=new Float32Array(r)),e[0]=t,e[1]=this.time,e[2]=this.step,e[3]=0;let l=this.flock;for(let a=0;a<t;a++){let o=4+a*8;e[o]=l.px[a],e[o+1]=l.py[a],e[o+2]=l.heading[a],e[o+3]=l.speed[a],e[o+4]=l.state[a],e[o+5]=l.fear[a],e[o+6]=l.scale[a],e[o+7]=l.leader[a]}return e}};var se={width:40,height:22},te={graze:"#f2efe4",alert:"#e0a92e",walk:"#7fa3b8",run:"#c05a3e",rest:"#cfd3c8"},G=new pe({count:24,seed:3,world:se}),re=G.writeSnapshot(),L=G.writeSnapshot(),De=0,nt=performance.now(),Te=!1,We=!1,qe=!1,ye=null,Re=null,xe={x:0,y:0},Oe=G.metrics(),Me=null,rt=!1;function st(n,e){G=new pe({count:n,seed:e,world:se}),G.run(20),re=G.writeSnapshot(),L=G.writeSnapshot(),Oe=G.metrics(),De=0}function at(n){let e=Math.min(n.width/se.width,n.height/se.height);return{scale:e,ox:(n.width-se.width*e)/2,oy:(n.height-se.height*e)/2}}function ut(n,e,t){let r=document.createElement("canvas");r.width=Math.max(1,Math.round(n)),r.height=Math.max(1,Math.round(e));let l=r.getContext("2d"),a=getComputedStyle(document.documentElement),o=a.getPropertyValue("--paddock").trim()||"#6d8b5e",b=a.getPropertyValue("--paddock-tuft").trim()||"#5f7d52";l.fillStyle=o,l.fillRect(0,0,r.width,r.height),l.strokeStyle=b,l.lineWidth=Math.max(1,t*.03);let i=12345,u=()=>(i=i*1103515245+12345&2147483647)/2147483647,s=Math.round(r.width*r.height/900);for(let d=0;d<s;d++){let p=u()*r.width,h=u()*r.height,g=t*(.1+u()*.18),M=(u()-.5)*.8;l.globalAlpha=.25+u()*.4,l.beginPath(),l.moveTo(p,h),l.lineTo(p+M*g,h-g),l.stroke()}return l.globalAlpha=1,r}function mt(n,e,t,r,l,a,o,b){let i=l*b,u=Math.cos(r),s=Math.sin(r);n.save(),n.translate(e,t),n.fillStyle="rgba(20, 30, 18, 0.28)",n.beginPath(),n.ellipse(i*.1,i*.14,i*.52,i*.34,r,0,Math.PI*2),n.fill(),n.rotate(r);let d=a===1?te.alert:a===2?te.walk:a===3?te.run:te.graze;n.fillStyle=We?d:te.graze,n.beginPath();let p=9;for(let g=0;g<=p;g++){let M=g/p*Math.PI*2,A=1+.09*Math.sin(M*4.5+b*9),v=Math.cos(M)*i*.48*A,T=Math.sin(M)*i*.31*A;g===0?n.moveTo(v,T):n.lineTo(v,T)}n.closePath(),n.fill(),!We&&a!==0&&(n.strokeStyle=d,n.lineWidth=Math.max(1.2,i*.09),n.globalAlpha=a===3?.95:.75,n.stroke(),n.globalAlpha=1);let h=i*.52;n.fillStyle="#2f3330",n.beginPath(),n.ellipse(h,0,i*.17,i*.13,0,0,Math.PI*2),n.fill(),n.beginPath(),n.ellipse(h-i*.04,-i*.15,i*.07,i*.045,-.5,0,Math.PI*2),n.ellipse(h-i*.04,i*.15,i*.07,i*.045,.5,0,Math.PI*2),n.fill(),o>.45&&(n.strokeStyle="rgba(47, 51, 48, 0.75)",n.lineWidth=Math.max(1,i*.045),n.beginPath(),n.moveTo(h+i*.02,-i*.16),n.lineTo(h+i*.16,-i*.24),n.moveTo(h+i*.02,i*.16),n.lineTo(h+i*.16,i*.24),n.stroke()),n.restore()}function ct(n,e,t,r){let l=r*1.5,o=Math.hypot(xe.x,xe.y)>.05?Math.atan2(xe.y,xe.x):-Math.PI/2;n.save(),n.translate(e,t),n.fillStyle="rgba(20, 30, 18, 0.3)",n.beginPath(),n.ellipse(l*.1,l*.14,l*.42,l*.24,o,0,Math.PI*2),n.fill(),n.strokeStyle="rgba(20, 24, 18, 0.35)",n.lineWidth=Math.max(1,r*.06),n.beginPath(),n.arc(0,0,l*.78,0,Math.PI*2),n.stroke(),n.rotate(o),n.fillStyle="#24262a",n.beginPath(),n.ellipse(0,0,l*.42,l*.2,0,0,Math.PI*2),n.fill(),n.fillStyle="#eceae2",n.beginPath(),n.ellipse(l*.34,0,l*.12,l*.08,0,0,Math.PI*2),n.fill(),n.beginPath(),n.ellipse(-l*.44,0,l*.1,l*.06,0,0,Math.PI*2),n.fill(),n.restore()}function dt(n,e){let t=n.canvas,{scale:r,ox:l,oy:a}=at(t),o=se.width*r,b=se.height*r,i=getComputedStyle(document.documentElement);n.fillStyle=i.getPropertyValue("--surface-sunk").trim()||"#1b2119",n.fillRect(0,0,t.width,t.height),(!Me||Me.width!==Math.round(o)||Me.height!==Math.round(b))&&(Me=ut(o,b,r)),n.drawImage(Me,l,a),n.strokeStyle="rgba(28, 38, 26, 0.5)",n.lineWidth=Math.max(2,r*.08),n.strokeRect(l,a,o,b);let u=L[0]|0,s=g=>l+g*r,d=g=>a+g*r,p=(g,M,A)=>{let v=Math.atan2(Math.sin(M-g),Math.cos(M-g));return g+v*A},h=(re[0]|0)===u;if(qe){n.strokeStyle="rgba(255,255,255,0.3)",n.lineWidth=1,n.beginPath();for(let g=0;g<u;g++){let M=4+g*8,A=L[M+7]|0;if(A<0||A>=u)continue;let v=4+A*8;n.moveTo(s(L[M]),d(L[M+1])),n.lineTo(s(L[v]),d(L[v+1]))}n.stroke()}for(let g=0;g<u;g++){let M=4+g*8,A=L[M],v=L[M+1],T=L[M+2];h&&(A=re[M]+(A-re[M])*e,v=re[M+1]+(v-re[M+1])*e,T=p(re[M+2],T,e)),mt(n,s(A),d(v),T,r,L[M+4]|0,L[M+5],L[M+6])}Re&&ct(n,Re.x,Re.y,r)}function pt(n){let e=Oe;n.readouts.cohesion.textContent=e.cohesion.toFixed(1),n.readouts.spacing.textContent=e.nnd.toFixed(1),n.readouts.polarisation.textContent=e.polarisation.toFixed(2),n.readouts.groups.textContent=String(e.splits);let t=[0,1,2,3],r=[te.graze,te.alert,te.walk,te.run];n.census.querySelectorAll("[data-state]").forEach((o,b)=>{let i=e.fractions[t[b]];o.style.flexGrow=String(Math.max(.001,i)),o.style.background=r[b],o.setAttribute("aria-label",`${Xe[t[b]]} ${Math.round(i*100)} percent`)}),document.querySelectorAll("[data-count]").forEach(o=>{let b=Number(o.dataset.count);o.textContent=`${Math.round(e.fractions[b]*100)}%`}),!rt&&e.fractions[3]>.3&&(rt=!0,n.hint.textContent="That was a stampede. Back off, let them settle, then try a wide arc instead.")}function bt(n){let e=n.canvas.getContext("2d"),t=()=>{let o=Math.min(2,window.devicePixelRatio||1),b=n.canvas.getBoundingClientRect();n.canvas.width=Math.max(1,Math.round(b.width*o)),n.canvas.height=Math.max(1,Math.round(b.height*o)),Me=null};new ResizeObserver(t).observe(n.canvas),t();let r=(o,b)=>{let i=n.canvas.getBoundingClientRect(),u=n.canvas.width/i.width,{scale:s,ox:d,oy:p}=at(n.canvas);return{x:((o-i.left)*u-d)/s,y:((b-i.top)*u-p)/s}},l=(o,b)=>{ye=r(o,b);let u=n.canvas.getBoundingClientRect(),s=n.canvas.width/u.width;Re={x:(o-u.left)*s,y:(b-u.top)*s}};n.canvas.addEventListener("pointermove",o=>{l(o.clientX,o.clientY),o.pointerType==="touch"&&o.preventDefault()}),n.canvas.addEventListener("pointerdown",o=>{l(o.clientX,o.clientY),n.canvas.setPointerCapture(o.pointerId)}),n.canvas.addEventListener("pointerleave",()=>{ye=null,Re=null});let a=()=>{requestAnimationFrame(a);let o=performance.now(),b=(o-nt)/1e3;if(nt=o,b>.25&&(b=.25),!Te){De+=b;let i=G.cfg.dt,u=0;for(;De>=i&&u<6;){let s={x:G.pointerX,y:G.pointerY};re=L,ye?G.setPointer(ye.x,ye.y):G.setPointer(NaN,NaN),G.tick(),ye&&Number.isFinite(s.x)&&(xe.x=G.threat.vx,xe.y=G.threat.vy),L=G.writeSnapshot(),De-=i,u++}u>0&&(Oe=G.metrics(),pt(n))}dt(e,Te?1:Math.min(1,De/G.cfg.dt))};st(24,3),requestAnimationFrame(a)}var gt={reset:st,setPaused:n=>{Te=n},isPaused:()=>Te,setDebugColours:n=>{We=n},setLinks:n=>{qe=n},snapshot:()=>({count:G.cfg.count,seed:G.cfg.seed,paused:Te,debugColours:We,showLinks:qe})};window.Sheep={start:bt,controls:gt};})();
+
+</script>
+<script>
+  (function () {
+    var ui = {
+      canvas: document.getElementById('paddock'),
+      census: document.getElementById('census'),
+      hint: document.getElementById('hint'),
+      readouts: {
+        cohesion: document.getElementById('r-cohesion'),
+        spacing: document.getElementById('r-spacing'),
+        polarisation: document.getElementById('r-pol'),
+        groups: document.getElementById('r-groups')
+      }
+    };
+    var c = window.Sheep.controls;
+    var seed = 3;
+    var countEl = document.getElementById('count');
+    var countVal = document.getElementById('count-val');
+    var pauseBtn = document.getElementById('pause');
+
+    function boot(state) {
+      state = state || {};
+      if (state.count) { countEl.value = String(state.count); countVal.textContent = String(state.count); }
+      if (state.seed) seed = state.seed;
+      window.Sheep.start(ui);
+      if (state.count || state.seed) c.reset(Number(countEl.value), seed);
+      if (state.debugColours) { document.getElementById('colours').checked = true; c.setDebugColours(true); }
+      if (state.showLinks) { document.getElementById('links').checked = true; c.setLinks(true); }
+    }
+
+    countEl.addEventListener('input', function () {
+      countVal.textContent = countEl.value;
+      c.reset(Number(countEl.value), seed);
+    });
+    document.getElementById('newflock').addEventListener('click', function () {
+      seed = (seed * 7919 + 13) % 100000;
+      c.reset(Number(countEl.value), seed);
+    });
+    function togglePause() {
+      c.setPaused(!c.isPaused());
+      pauseBtn.textContent = c.isPaused() ? 'Resume' : 'Pause';
+    }
+    pauseBtn.addEventListener('click', togglePause);
+    document.getElementById('colours').addEventListener('change', function (e) { c.setDebugColours(e.target.checked); });
+    document.getElementById('links').addEventListener('change', function (e) { c.setLinks(e.target.checked); });
+    addEventListener('keydown', function (e) {
+      if (e.key === ' ' && e.target === document.body) { e.preventDefault(); togglePause(); }
+    });
+
+    if (window.claude && window.claude.hot) {
+      window.claude.hot.snapshot(function () { return c.snapshot(); });
+      window.claude.hot.ready ? window.claude.hot.ready(boot) : boot(window.claude.hot.data);
+    } else {
+      boot({});
+    }
+  })();
+</script>
