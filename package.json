@@ -14,17 +14,49 @@
     "screenshot": "node tools/screenshot.mjs",
     "assets:sheep": "python3 tools/blender/make_sheep.py assets/sheep.glb",
     "build:page": "node tools/build-page.mjs",
-    "inspect:glb": "node tools/inspect-glb.mjs assets/sheep.glb"
+    "inspect:glb": "node tools/inspect-glb.mjs assets/sheep.glb",
+    "build:electron": "node tools/build-electron.mjs",
+    "electron": "npm run build:electron && electron .",
+    "dist:win": "npm run build:electron && electron-builder --win portable --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
     "@types/three": "^0.186.0",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "playwright-core": "^1.56.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
     "vitest": "^3.2.7"
   },
   "dependencies": {
+    "koffi": "^3.2.1",
     "three": "^0.186.0"
+  },
+  "main": "dist-electron/main.cjs",
+  "build": {
+    "appId": "net.triband.sheepherding",
+    "productName": "Sheepherding",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-electron/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
   }
 }

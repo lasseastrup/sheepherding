@@ -4,3 +4,6 @@ screenshots/
 *.log
 .DS_Store
 web/generated/
+dist-electron/
+release/
+smoke-report.json

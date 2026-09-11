@@ -1,0 +1,47 @@
+name: Windows build
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['docs/**', '*.md']
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Simulation tests (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+        env: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' }
+      - run: npm run typecheck
+      - run: npm test
+
+  windows:
+    name: Overlay shell (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build:electron
+      - name: Smoke test the overlay window
+        shell: pwsh
+        run: |
+          npx electron . --smoke --smoke-out smoke-report.json --disable-gpu-sandbox
+          Get-Content smoke-report.json
+          $r = Get-Content smoke-report.json | ConvertFrom-Json
+          if (-not $r.ok) { throw "overlay did not start: $($r.error)" }
+      - name: Package (portable exe, unsigned)
+        run: npx electron-builder --win portable --publish never
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sheepherding-windows
+          path: |
+            release/*.exe
+            smoke-report.json
+          if-no-files-found: error
