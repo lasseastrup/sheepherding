@@ -23,8 +23,8 @@ Angles in degrees. Rates are per second and are converted to per-step probabilit
 | Body radius (contact disc) | 0.2–0.25 m | 0.5 wide, 1.0 long; contact disc r = 0.45 | PBD uses the disc; visuals are the full model |
 | Packed spacing (alarmed) | ~1 BL centre to centre | 1.0–1.2 | Jadhav 1.21 m |
 | Relaxed grazing spacing | ~5 m (4 BL) | 2.5–4 | Depends on flock size and screen |
-| Dog response distance r_s | ~70 m (58 BL) | 18 (bold) – 26 (timid) | Compressed; still "most of the screen" |
-| Human flight distance | 5.7–11.4 m (5–10 BL) | 5–10 | Used for the *idle* pointer |
+| Dog response distance r_s | ~70 m (58 BL) | 8 base, 5–13 after boldness and arousal | Compressed hard: at 18+ BL the flock reacts across the whole paddock and cannot be approached at all |
+| Human flight distance | 5.7–11.4 m (5–10 BL) | 3 base | Used for the *idle* pointer; a still pointer is a standing human, a moving one is a dog |
 | Following gap | 1–2 m | 1.2–1.8 | |
 | Isolation distance | ~10 m | 8 | Lone-sheep trigger |
 
@@ -105,8 +105,8 @@ Per sheep, with `d = |threatPos − pos|` and `toward = dot(normalize(pos − th
 
 ```
 zone   = flightZone · (0.8 + 0.4·arousal) / boldness
-        flightZone = 7 BL when |cursorVel| < 0.3 BL/s (idle pointer ≈ standing human),
-                     rising linearly to r_s = 22 BL at |cursorVel| ≥ 2 BL/s (moving dog)
+        flightZone = 3 BL when |cursorVel| < 0.3 BL/s (idle pointer ≈ standing human),
+                     rising linearly to r_s = 8 BL at |cursorVel| ≥ 2 BL/s (moving dog)
 directness = 1 + 0.5 · max(0, toward)                  head-on approaches count more
 angleFactor = 1.0 in front hemisphere, 0.3 in blind cone (see above)
 pressure = smoothstep(zone·1.5, zone·0.35, d) · speedFactor · directness · angleFactor
@@ -167,12 +167,13 @@ RUN → ALERT     (1/3 s) · (1 + 2.5 · n_close)^2.5, n_close = visible non-run
 
 ```
 fearDirect = pressure                                             (§3)
-fearSocial = w · max over visible j of fearHist_j(t − reactionDelay)
-             w = 0.9 · visibilityWeight(j)        visibilityWeight ∝ 1 / log(2 + dist), clamped
-             applied only if fraction of visible neighbours with fear > 0.4 exceeds
+fearSocial = min(0.85 · fear_j, w · fear_j)      capped below the source: transmission is lossy
+             w = 0.9 · visibilityWeight(j) · (1.6 if j runs toward me)
+             visibilityWeight ∝ 1 / log(2 + dist), read from j's fear one reaction delay ago
+             applied only if fraction of visible neighbours alarmed exceeds
              threshold θ = 0.35 · boldness, OR my own fear > 0.5, OR the neighbour is running
              *toward* me (a runner coming at me is always a stimulus)
-fear      = max(fear, fearDirect, fearSocial)
+fear      = min(1, max(fear, fearDirect, fearSocial))
 fear     *= exp(−dt / τ_fear)         τ_fear = 12 s · fearDecay, shortened to 6 s when the flock is packed
 arousal   = max(arousal, 0.6·fear);  arousal *= exp(−dt / 120 s)
 ```
@@ -204,6 +205,13 @@ threat (the pointer is inside the flock), its cohesion target switches to the ne
 neighbours only for 3 s. Sub-groups form naturally. A tail-end sheep with the pointer within
 1.5 BL and the flock ahead blocked (danger ahead > 0.7) gets interest in the slots past the
 pointer: it breaks back. Both are the cost of pushing too hard.
+
+**Sub-groups and unease.** Connected components of the flock are found each step by union-find
+over pairs within 6 BL. A sheep's `unease` is the fraction of the flock it is cut off from. Unease
+is deliberately **not** fear: it makes a sheep want to rejoin, never to freeze. It adds an interest
+lobe toward the flock's centre in GRAZE, WALK and RUN, and a sheep that is both a minority
+fragment, in a group under 4, and more than 8 BL from the flock's centre must leave GRAZE or ALERT
+and walk back.
 
 **Isolation.** A sheep with no visible neighbour within 8 BL sets `lonely = 1`: bleat (with
 cooldown), fear floor 0.3, cohesion gain ×2, GRAZE forbidden. It runs to the flock even past the
@@ -369,7 +377,37 @@ Scenarios and expected ranges (derived from the field data, compressed to sim sc
 
 Every scenario also has a Playwright screenshot sequence for visual review from Claude Code.
 
-## 11. Build order
+## 11. What changed during implementation
+
+Tuning against the metrics harness contradicted the spec in seven places. Each change is in the
+code with a comment saying why:
+
+1. **Flight zones are much smaller** (3 BL idle, 8 BL moving, against 7 and 22). At spec scale the
+   flock reacts across the whole paddock and cannot be approached at all, so there is no game.
+2. **Contagion is lossy.** Copying a neighbour's alarm at full strength makes the flock a perfect
+   memory cell: it holds itself at maximum fear indefinitely and never settles. Transmitted fear is
+   capped at 0.85 of its source, and fear is clamped to 1.
+3. **Unease is separated from fear.** Modelling "my group is too small" as fear parks sheep in
+   ALERT, which is a stationary state, so a scattered flock freezes instead of regrouping. Unease
+   now drives rejoining only.
+4. **Centroid attraction tapers when packed.** A constant pull to the middle makes a packed flock
+   mill on the spot under pressure instead of leaving as a group. It fades below ~1.6 BL.
+5. **Only non-RUN states get a flee lobe.** RUN already carries escape in its force sum; a second
+   competing interest lobe made the two fight and the flock jitter in place.
+6. **Cornered sheep stop.** A sheep under pressure with nowhere to go drops to ALERT and faces the
+   threat rather than running on the spot against a fence.
+7. **Spontaneous walk initiation scales as 1/group size**, per Azaïs et al, so a large flock is no
+   more restless than a small one. Dividing by the neighbour count instead made big flocks frantic.
+
+Two metrics were also redefined: splits are counted at 4 BL (relaxed grazing spacing exceeds the
+original 2.5 BL threshold), and jitter excludes sheep that are deliberately turning, such as an
+alert sheep facing the threat.
+
+Measured time budget for 20 undisturbed sheep: about 69 % grazing, 30 % walking, the rest alert or
+running. Simulation cost is 84 µs per step at 20 sheep and 374 µs at 60, or 0.25 % and 1.1 % of one
+core at 30 Hz.
+
+## 12. Build order
 
 | Milestone | Scope | Exit check |
 |---|---|---|

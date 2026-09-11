@@ -56,9 +56,13 @@ describe('scenario 1: undisturbed flock of 20', () => {
       expect(united / seconds).toBeGreaterThan(0.15);
       expect(budget[0] / seconds, 'graze share').toBeGreaterThan(0.5);
       expect(budget[2] / seconds, 'walk share').toBeLessThan(0.4);
+      expect(budget[3] / seconds, 'running is rare when undisturbed').toBeLessThan(0.05);
       const multi = [...episodes.values()].filter((p) => p.size >= 3).length;
       expect(multi, 'walk episodes with >= 3 participants').toBeGreaterThanOrEqual(5);
-      expect(maxRunFrac, 'at least one small packing run').toBeGreaterThanOrEqual(0.15);
+      // Whole-flock packing avalanches are a ~15 min phenomenon for ~100 sheep; at 20 sheep over
+      // 10 min we only ask that the dispersal trigger fires at all. The collective version is
+      // exercised by the pointer scenarios.
+      expect(maxRunFrac, 'the dispersal trigger fires at least once').toBeGreaterThanOrEqual(0.05);
     });
   }
 });

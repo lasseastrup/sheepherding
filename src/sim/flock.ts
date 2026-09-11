@@ -3,6 +3,7 @@ import type { Rng } from './rng';
 import { SheepState } from './types';
 
 export const MAX_NEIGHBOURS = 8;
+export const FEAR_HIST = 40; // ring covering ~1.3 s at 30 Hz, for delayed contagion
 export const MAX_CONTACTS = 16;
 
 /** Structure-of-arrays storage for all sheep. */
@@ -12,6 +13,8 @@ export class Flock {
   episodeCounter = 0;
   /** flock-wide mean nearest-neighbour distance, refreshed each step */
   meanNnd = 1;
+  /** write head of the per-sheep fear ring buffer */
+  histHead = 0;
 
   // kinematics
   readonly px: Float32Array;
@@ -29,11 +32,17 @@ export class Flock {
   readonly pendingState: Int8Array;
   readonly pendingAt: Float32Array;
   readonly fear: Float32Array;
+  readonly fearHist: Float32Array;
+  readonly fearJump: Float32Array;
+  readonly pressure: Float32Array;
+  readonly lonely: Uint8Array;
+  readonly splitUntil: Float32Array;
   readonly arousal: Float32Array;
   readonly stamina: Float32Array;
   readonly leader: Int16Array;
   readonly leaderSide: Int8Array; // 0 behind, +1 left, -1 right
   readonly aloneTime: Float32Array;
+  readonly stuckTime: Float32Array;
   readonly nextStepAt: Float32Array;
   readonly stepRemaining: Float32Array;
   readonly wanderHeading: Float32Array;
@@ -65,6 +74,8 @@ export class Flock {
   readonly lcmY: Float32Array;
 
   // steering output
+  /** 1 while the sheep is deliberately steering or turning this step */
+  readonly intent: Uint8Array;
   readonly desiredSpeed: Float32Array;
   readonly dangerAhead: Float32Array;
 
@@ -83,10 +94,16 @@ export class Flock {
     this.stateTime = f();
     this.pendingState = new Int8Array(capacity).fill(-1);
     this.pendingAt = f();
-    this.fear = f(); this.arousal = f(); this.stamina = f().fill(1);
+    this.fear = f();
+    this.fearHist = new Float32Array(capacity * FEAR_HIST);
+    this.fearJump = f();
+    this.pressure = f();
+    this.lonely = new Uint8Array(capacity);
+    this.splitUntil = f();
+    this.arousal = f(); this.stamina = f().fill(1);
     this.leader = new Int16Array(capacity).fill(-1);
     this.leaderSide = new Int8Array(capacity);
-    this.aloneTime = f(); this.nextStepAt = f(); this.stepRemaining = f();
+    this.aloneTime = f(); this.stuckTime = f(); this.nextStepAt = f(); this.stepRemaining = f();
     this.wanderHeading = f(); this.noiseAngle = f(); this.alertUntil = f(); this.walkUntil = f();
     this.episodeId = new Int32Array(capacity).fill(-1);
     this.scale = f(); this.radius = f(); this.boldness = f(); this.gregarious = f();
@@ -98,6 +115,7 @@ export class Flock {
     this.contactDist = new Float32Array(capacity * MAX_CONTACTS);
     this.contactCount = new Uint8Array(capacity);
     this.nearestDist = f(); this.meanVisDist = f(); this.lcmX = f(); this.lcmY = f();
+    this.intent = new Uint8Array(capacity);
     this.desiredSpeed = f(); this.dangerAhead = f();
     this.interest = new Float32Array(capacity * slots);
     this.danger = new Float32Array(capacity * slots);
@@ -137,6 +155,10 @@ export class Flock {
       this.nextStepAt[i] = rng.range(cfg.graze.stepInterval[0], cfg.graze.stepInterval[1]) * this.grazeBias[i] * 0.5;
       this.stamina[i] = 1;
       this.leader[i] = -1;
+      this.fear[i] = 0;
+      this.arousal[i] = 0;
+      this.pressure[i] = 0;
+      this.splitUntil[i] = 0;
     }
   }
 }

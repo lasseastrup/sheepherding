@@ -64,8 +64,8 @@ export function computeMetrics(flock: Flock, prevHeading: Float32Array, time: nu
       sx += flock.vx[i] / sp;
       sy += flock.vy[i] / sp;
     }
-    // jitter: heading changes of sheep that have no intention to move
-    if (flock.desiredSpeed[i] <= 1e-4 && sp < movingThreshold) {
+    // jitter: heading changes of sheep that are neither steering nor deliberately turning
+    if (flock.intent[i] === 0 && sp < movingThreshold) {
       let d = flock.heading[i] - prevHeading[i];
       d = Math.atan2(Math.sin(d), Math.cos(d));
       jit += Math.abs(d) * (180 / Math.PI);

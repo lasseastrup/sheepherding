@@ -2,9 +2,11 @@ import { Behaviour } from './behaviour';
 import { defaultConfig, mergeConfig, type DeepPartial, type SimConfig } from './config';
 import { Flock } from './flock';
 import { UniformGrid } from './grid';
+import { Groups } from './groups';
 import { computeMetrics, type Metrics } from './metrics';
 import { Motion } from './motion';
 import { computeNeighbours } from './neighbours';
+import { Perception, type Threat } from './perception';
 import { Rng } from './rng';
 import { Steering } from './steering';
 import { SNAP_HEADER, SNAP_STRIDE, snapshotLength } from './types';
@@ -20,6 +22,13 @@ export class Sim {
   readonly behaviour: Behaviour;
   readonly steering: Steering;
   readonly motion: Motion;
+  readonly perception: Perception;
+  readonly groups: Groups;
+  /** where the threat was last seen, and for how long it is still remembered */
+  lastThreatX = 0;
+  lastThreatY = 0;
+  threatMemory = 0;
+  readonly threat: Threat = { active: false, x: 0, y: 0, vx: 0, vy: 0, speed: 0 };
   readonly prevHeading: Float32Array;
   time = 0;
   step = 0;
@@ -34,6 +43,8 @@ export class Sim {
     this.behaviour = new Behaviour(this.cfg, this.rng);
     this.steering = new Steering(this.cfg, this.rng);
     this.motion = new Motion(this.cfg, CAPACITY);
+    this.perception = new Perception(this.cfg);
+    this.groups = new Groups(CAPACITY);
     this.prevHeading = new Float32Array(CAPACITY);
     this.flock.spawn(this.cfg, this.rng);
     // relax initial overlaps
@@ -54,8 +65,11 @@ export class Sim {
     this.prevHeading.set(f.heading.subarray(0, f.count));
     this.grid.build(f.px, f.py, f.count);
     computeNeighbours(f, this.grid, this.cfg);
-    if (this.cfg.behaviourEnabled) this.behaviour.update(f, this.time, dt);
-    this.steering.update(f, dt);
+    this.updateThreat(dt);
+    this.groups.update(f, this.cfg.group.linkDist, this.cfg.group.comfortable, this.cfg.group.strayDist);
+    this.perception.update(f, this.threat, dt, this.groups);
+    if (this.cfg.behaviourEnabled) this.behaviour.update(f, this.time, dt, this.groups);
+    this.steering.update(f, this.threat, dt, this.groups, this.lastThreatX, this.lastThreatY, this.threatMemory > 0);
     this.motion.update(f, dt);
     this.time += dt;
     this.step++;
@@ -72,6 +86,35 @@ export class Sim {
     this.pointerY = y;
   }
 
+  /** Low-pass the pointer into a threat position and velocity. */
+  private updateThreat(dt: number): void {
+    const t = this.threat;
+    const active = Number.isFinite(this.pointerX) && Number.isFinite(this.pointerY);
+    this.threatMemory = Math.max(0, this.threatMemory - dt);
+    if (!active) {
+      t.active = false;
+      t.vx = 0; t.vy = 0; t.speed = 0;
+      return;
+    }
+    this.lastThreatX = this.pointerX;
+    this.lastThreatY = this.pointerY;
+    this.threatMemory = this.cfg.group.threatMemory;
+    if (!t.active) {
+      t.x = this.pointerX; t.y = this.pointerY;
+      t.vx = 0; t.vy = 0; t.speed = 0;
+      t.active = true;
+      return;
+    }
+    const rawVx = (this.pointerX - t.x) / dt;
+    const rawVy = (this.pointerY - t.y) / dt;
+    const k = 1 - Math.exp(-dt / 0.06);
+    t.vx += (rawVx - t.vx) * k;
+    t.vy += (rawVy - t.vy) * k;
+    t.speed = Math.hypot(t.vx, t.vy);
+    t.x = this.pointerX;
+    t.y = this.pointerY;
+  }
+
   /** Runtime-tunable parameters (world size, count and seed are fixed after construction). */
   applyConfig(patch: DeepPartial<SimConfig>): void {
     const keep = { seed: this.cfg.seed, count: this.cfg.count, world: this.cfg.world, steering: { slots: this.cfg.steering.slots } };
@@ -80,6 +123,7 @@ export class Sim {
     (this.behaviour as unknown as { cfg: SimConfig }).cfg = this.cfg;
     (this.steering as unknown as { cfg: SimConfig }).cfg = this.cfg;
     (this.motion as unknown as { cfg: SimConfig }).cfg = this.cfg;
+    this.perception.setConfig(this.cfg);
   }
 
   metrics(): Metrics {

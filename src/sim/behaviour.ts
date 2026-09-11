@@ -1,5 +1,6 @@
 import type { SimConfig } from './config';
 import { Flock, MAX_NEIGHBOURS } from './flock';
+import type { Groups } from './groups';
 import type { Rng } from './rng';
 import { SheepState } from './types';
 
@@ -64,6 +65,7 @@ export class Behaviour {
         flock.leader[i] = -1;
         flock.stepRemaining[i] = 0;
         flock.episodeId[i] = -1;
+        flock.stuckTime[i] = 0;
         break;
       }
       case SheepState.Rest:
@@ -109,7 +111,7 @@ export class Behaviour {
     }
   }
 
-  update(flock: Flock, time: number, dt: number): void {
+  update(flock: Flock, time: number, dt: number, groups: Groups): void {
     const cfg = this.cfg;
     const rng = this.rng;
     const n = flock.count;
@@ -127,6 +129,7 @@ export class Behaviour {
       let nW = 0;
       let nR = 0;
       let nClose = 0; // non-running within run.stop.closeDist
+      let nAlert = 0;
       let allPacked = flock.nbrCount[i] > 0;
       const base = i * MAX_NEIGHBOURS;
       for (let q = 0; q < flock.nbrCount[i]; q++) {
@@ -135,13 +138,22 @@ export class Behaviour {
         const d = flock.nbrDist[base + q];
         if (sj === SheepState.Walk) nW++;
         else if (sj === SheepState.Run) nR++;
-        else nS++;
+        else { nS++; if (sj === SheepState.Alert) nAlert++; }
         if (sj !== SheepState.Run && d < R.stop.closeDist) nClose++;
         if (d > R.stop.packedDist) allPacked = false;
       }
       const nM = nW + nR;
       const reaction = flock.reactionDelay[i] / (1 + flock.arousal[i]);
       const st = flock.state[i] as SheepState;
+
+      const F = cfg.fear;
+      const fear = flock.fear[i];
+
+      // --- startle: a sudden jump in pressure skips the alert stage entirely ---
+      if (st !== SheepState.Run && fear >= F.startleEnter && flock.fearJump[i] >= F.startleJump) {
+        this.schedule(flock, i, SheepState.Run, reaction * 0.5, time);
+        continue;
+      }
 
       // --- run triggers (shared by Graze / Alert / Walk) ---
       if (st !== SheepState.Run) {
@@ -174,7 +186,25 @@ export class Behaviour {
 
       switch (st) {
         case SheepState.Graze: {
-          let rate = (W.spontaneousRate / (flock.nbrCount[i] + 1)) * flock.boldness[i];
+          if (fear >= F.alertEnter || flock.lonely[i]) {
+            this.schedule(flock, i, SheepState.Alert, reaction, time);
+            break;
+          }
+          if (groups.mustRejoin[i]) {
+            this.schedule(flock, i, SheepState.Walk, reaction, time);
+            break;
+          }
+          // a neighbour that has gone alert is itself a reason to look up
+          if (nAlert > 0 && fear > 0.05) {
+            const r = F.alertMimeticRate * (nAlert / Math.max(1, flock.nbrCount[i]));
+            if (rng.chance(hazard(r, dt))) {
+              this.schedule(flock, i, SheepState.Alert, reaction, time);
+              break;
+            }
+          }
+          // Azaïs et al: the *group* initiates at a size-independent rate, so each individual's
+          // spontaneous rate scales as 1/N. A big flock is no more restless than a small one.
+          let rate = (W.spontaneousRate / Math.max(1, groups.groupSize[i])) * flock.boldness[i];
           if (nM > 0) rate += (W.mimetic.a * Math.pow(nM, W.mimetic.b)) / Math.pow(Math.max(1, nS), W.mimetic.g);
           if (rng.chance(hazard(rate, dt))) {
             this.schedule(flock, i, SheepState.Walk, nM > 0 ? reaction : 0, time);
@@ -189,6 +219,24 @@ export class Behaviour {
           break;
         }
         case SheepState.Alert: {
+          if (fear >= F.runEnter && flock.stuckTime[i] < R.stop.stuckTime) {
+            this.schedule(flock, i, SheepState.Run, reaction * 0.5, time);
+            break;
+          }
+          if (flock.speed[i] > R.stop.stuckSpeed) flock.stuckTime[i] = Math.max(0, flock.stuckTime[i] - dt);
+          // standing still cannot fix being alone: go and rejoin
+          if (groups.mustRejoin[i] && flock.stateTime[i] > 0.5) {
+            this.schedule(flock, i, SheepState.Walk, reaction, time);
+            break;
+          }
+          if (fear >= F.walkEnter && flock.stateTime[i] > 1) {
+            // gentle pressure: walk away rather than bolt
+            if (rng.chance(hazard(F.walkRate, dt))) {
+              this.schedule(flock, i, SheepState.Walk, reaction, time);
+              break;
+            }
+          }
+          if (fear >= F.alertExit) flock.alertUntil[i] = Math.max(flock.alertUntil[i], time + 1);
           if (nM > 0) {
             const rate = (W.mimetic.a * Math.pow(nM, W.mimetic.b)) / Math.pow(Math.max(1, nS), W.mimetic.g);
             if (rng.chance(hazard(rate, dt))) {
@@ -196,12 +244,18 @@ export class Behaviour {
               break;
             }
           }
-          if (time >= flock.alertUntil[i]) this.schedule(flock, i, SheepState.Graze, 0, time);
+          if (time >= flock.alertUntil[i] && !flock.lonely[i]) this.schedule(flock, i, SheepState.Graze, 0, time);
+          break;
           break;
         }
         case SheepState.Walk: {
+          if (fear >= F.runEnter) {
+            this.schedule(flock, i, SheepState.Run, reaction * 0.5, time);
+            break;
+          }
           let srate = (W.stop.a * Math.pow(nS, W.stop.b)) / Math.pow(Math.max(1, nM), W.stop.g);
           srate += W.spontaneousStopRate / (flock.nbrCount[i] + 1);
+          if (groups.mustRejoin[i]) srate *= 0.2;
           const L = flock.leader[i];
           if (L >= 0) {
             const dx = flock.px[L] - flock.px[i];
@@ -229,8 +283,16 @@ export class Behaviour {
         }
         case SheepState.Run: {
           let stopRate = Math.pow(1 + R.stop.a * nClose, R.stop.d) / R.stop.tau;
-          if (flock.stateTime[i] > R.stop.maxDuration && flock.fear[i] < 0.5) stopRate += 2;
-          if (flock.fear[i] < 0.2 && allPacked && flock.stateTime[i] > 0.5) {
+          if (flock.stateTime[i] > R.stop.maxDuration && fear < 0.5) stopRate += 2;
+          // Cornered: a sheep that cannot make progress stops and faces the threat rather than
+          // running on the spot. Real flocks pressed against a fence hold and watch.
+          if (flock.speed[i] < R.stop.stuckSpeed) flock.stuckTime[i] += dt;
+          else flock.stuckTime[i] = 0;
+          const stuck = flock.stuckTime[i] > R.stop.stuckTime;
+          // still under real pressure and still able to move: keep going
+          if (fear >= F.runEnter && !stuck) stopRate = 0;
+          else if (stuck) stopRate += 1.5;
+          if (fear < 0.2 && allPacked && flock.stateTime[i] > 0.5) {
             this.schedule(flock, i, SheepState.Alert, 0, time);
           } else if (rng.chance(hazard(stopRate, dt))) {
             this.schedule(flock, i, SheepState.Alert, reaction * 0.5, time);
