@@ -89,44 +89,45 @@ static void SetClickThrough(IntPtr hwnd, bool clickThrough)
 - Budget targets (mid-range laptop): idle CPU < 1 %, active < 3 %, RAM as low as the engine
   allows, no measurable battery impact when idle.
 
-## Engine setup: Unity
+## Shell setup: Electron (chosen)
 
-- Player settings: Windowed, no resizable window, Graphics API D3D11 first (test D3D12
-  later). Check the "DXGI flip model swapchain" setting during the spike: transparency via
-  `DwmExtendFrameIntoClientArea` has been reported to interact with it.
-- `Application.runInBackground = true`, `Application.targetFrameRate = 30`,
-  `QualitySettings.vSyncCount = 0`; use `OnDemandRendering.renderFrameInterval` for idle.
-- Camera: clear flags Solid Color, background alpha 0, orthographic. URP: disable
-  post-processing on this camera, or verify alpha survives.
-- Native handle: `GetActiveWindow()` at startup (the Unity window is active on launch), then
-  apply styles:
-
-```csharp
-IntPtr hwnd = GetActiveWindow();
-long ex = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
-ex |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(ex));
-var margins = new MARGINS { cxLeftWidth = -1 };
-DwmExtendFrameIntoClientArea(hwnd, ref margins);
-SetWindowPos(hwnd, HWND_TOPMOST, work.left, work.top, work.width, work.height, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+```ts
+// main.ts
+const { workArea } = screen.getPrimaryDisplay();
+const win = new BrowserWindow({
+  x: workArea.x, y: workArea.y, width: workArea.width, height: workArea.height,
+  transparent: true, frame: false, hasShadow: false, resizable: false,
+  alwaysOnTop: true, skipTaskbar: true, focusable: false,
+  webPreferences: { backgroundThrottling: false, preload: PRELOAD },
+});
+win.setAlwaysOnTop(true, 'screen-saver');          // higher z-band than 'normal' topmost
+win.setIgnoreMouseEvents(true, { forward: true }); // clicks fall through, mousemove still arrives
 ```
 
-- Cursor → world: `GetCursorPos` → subtract window origin → `Camera.ScreenPointToRay`
-  (flip Y) → intersect plane y = 0.
-- Wrap all P/Invoke in `#if UNITY_STANDALONE_WIN && !UNITY_EDITOR`.
+- Electron applies `WS_EX_LAYERED`, `WS_EX_TOPMOST`, `WS_EX_TOOLWINDOW` (via `skipTaskbar`) and
+  `WS_EX_NOACTIVATE` (via `focusable:false`) itself, and uses DWM per-pixel alpha.
+- **Selective interaction:** renderer raycasts the forwarded `mousemove` against sheep/HUD and
+  asks main over IPC to call `setIgnoreMouseEvents(false)` on hover and `(true,{forward:true})`
+  on leave. Forwarding does not work while DevTools is open.
+- **Cursor when the page is not receiving events:** `screen.getCursorScreenPoint()` in main
+  (DIP units; multiply by `display.scaleFactor` for physical pixels), polled at the sim rate
+  and sent over IPC, or read in the renderer via a preload bridge.
+- Transparent windows cannot be maximised or set fullscreen; always size to `workArea`.
+- One `BrowserWindow` per `screen.getAllDisplays()` entry; re-layout on `display-added`,
+  `display-removed`, `display-metrics-changed`.
+- Tray: `Tray` + `Menu`. Hotkeys: `globalShortcut`. Session lock: `powerMonitor` events
+  `lock-screen` / `unlock-screen`, plus `suspend` / `resume`.
+- Fullscreen-app detection: `koffi` FFI call to `SHQueryUserNotificationState` in main, polled
+  every ~1 s; hide all overlay windows while a fullscreen/presentation state is reported.
+- Re-assert topmost on `blur` and on a slow timer with `setAlwaysOnTop(true,'screen-saver')`.
+- three.js: `new WebGLRenderer({ alpha: true, premultipliedAlpha: true, antialias: true })`,
+  `renderer.setClearColor(0x000000, 0)`, no post-processing pass that writes alpha = 1.
+  `document.body { background: transparent }`.
 
-## Engine setup: Godot 4 (alternative)
+## Shell setup: Tauri (optional later port)
 
-- Renderer **must** be Compatibility (`rendering/renderer/rendering_method = gl_compatibility`);
-  Forward+/Mobile transparency is broken on Windows.
-- Project settings: `display/window/per_pixel_transparency/allowed = true`,
-  `display/window/size/transparent = true`, `borderless = true`, `always_on_top = true`;
-  `get_viewport().transparent_bg = true`; `application/run/low_processor_mode` for idle.
-- Whole-window click-through: `get_window().mouse_passthrough = true` (sets
-  `WS_EX_TRANSPARENT`). Cursor position via `DisplayServer.mouse_get_position()` (global)
-  even when passthrough is on.
-- Selective interaction: prefer P/Invoke toggling of `WS_EX_TRANSPARENT` via C# on
-  `DisplayServer.window_get_native_handle(DisplayServer.HANDLE_TYPE_WINDOW_HANDLE)`.
-  `Window.mouse_passthrough_polygon` also works but on Windows it is implemented with
-  `SetWindowRgn`, which clips rendering to the polygon, so pad polygons generously.
-- `WS_EX_TOOLWINDOW` / `WS_EX_NOACTIVATE` are not exposed by Godot; set them via P/Invoke.
+- `tauri.conf.json` window: `transparent`, `decorations:false`, `alwaysOnTop`, `skipTaskbar`,
+  `focus:false`; `window.set_ignore_cursor_events(true)`.
+- No mousemove forwarding: poll `GetCursorPos` in Rust (`windows` crate) and emit to the
+  webview; toggle `set_ignore_cursor_events` from the raycast result.
+- WebView2 transparency with WebGL must be verified in a spike before committing to the port.
