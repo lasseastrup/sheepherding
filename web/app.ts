@@ -197,11 +197,9 @@ export async function start(ui: Ui): Promise<void> {
         updateReadouts(ui);
       }
     }
-    const t = sim.threat;
     renderer!.render(prev, cur, paused ? 1 : Math.min(1, acc / sim.cfg.dt), paused ? 0 : ft, {
       debugColours,
       links: showLinks,
-      pointer: pointer && t.active ? { x: t.x, y: t.y, vx: t.vx, vy: t.vy } : null,
     });
   };
 

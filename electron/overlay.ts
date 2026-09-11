@@ -124,11 +124,9 @@ async function main(): Promise<void> {
     const interval = idle ? 0.1 : 1 / 30;
     if (renderAcc < interval) return;
     renderAcc = 0;
-    const t = sim.threat;
     renderer!.render(prev, cur, Math.min(1, acc / dt), ft, {
       debugColours: config.debugColours,
       links: false,
-      pointer: pointer && t.active ? { x: t.x, y: t.y, vx: t.vx, vy: t.vy } : null,
     });
   };
   requestAnimationFrame(frame);

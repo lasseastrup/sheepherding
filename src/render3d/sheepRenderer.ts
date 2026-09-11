@@ -29,8 +29,6 @@ export interface RendererOptions {
 export interface FrameOptions {
   debugColours: boolean;
   links: boolean;
-  /** pointer world position, or null when it is off the paddock */
-  pointer: { x: number; y: number; vx: number; vy: number } | null;
 }
 
 const GAITS = [
@@ -106,8 +104,6 @@ export class SheepRenderer {
   private sheep: SheepInstance[] = [];
   private readonly links: THREE.LineSegments;
   private readonly linkPositions: Float32Array;
-  private readonly dog: THREE.Group;
-  private dogRing: THREE.Mesh | null = null;
   private readonly sun: THREE.DirectionalLight;
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -180,10 +176,6 @@ export class SheepRenderer {
     this.links.frustumCulled = false;
     this.links.visible = false;
     this.scene.add(this.links);
-
-    this.dog = this.buildDog();
-    this.dog.visible = false;
-    this.scene.add(this.dog);
   }
 
   /** Load the sheep model from an in-memory glb. Resolves when clones can be made. */
@@ -287,68 +279,6 @@ export class SheepRenderer {
     return c;
   }
 
-  /** The pointer's avatar: a collie, black and white, with a ground ring so it can be found. */
-  private buildDog(): THREE.Group {
-    const g = new THREE.Group();
-    const dark = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.9 });
-    const white = new THREE.MeshStandardMaterial({ color: 0xeceae2, roughness: 0.9 });
-
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), dark);
-    body.scale.set(0.78, 0.34, 0.36);
-    body.position.set(-0.05, 0.38, 0);
-    body.castShadow = true;
-    // white saddle stripe down the back and a white chest, the collie's markings from above
-    const saddle = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), white);
-    saddle.scale.set(0.36, 0.3, 0.16);
-    saddle.position.set(-0.05, 0.46, 0);
-    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), white);
-    chest.scale.set(0.7, 0.6, 0.9);
-    chest.position.set(0.3, 0.36, 0);
-
-    const neck = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), dark);
-    neck.scale.set(1.1, 0.8, 0.9);
-    neck.position.set(0.42, 0.44, 0);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 9), dark);
-    head.scale.set(1.05, 0.85, 0.9);
-    head.position.set(0.62, 0.47, 0);
-    head.castShadow = true;
-    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), dark);
-    muzzle.scale.set(1.5, 0.8, 0.8);
-    muzzle.position.set(0.8, 0.44, 0);
-    // the blaze runs down the face, so it reads as a collie rather than a white ball
-    const blaze = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), white);
-    blaze.scale.set(2.6, 0.9, 0.7);
-    blaze.position.set(0.72, 0.55, 0);
-    for (const side of [1, -1]) {
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.13, 5), dark);
-      ear.position.set(0.57, 0.6, side * 0.09);
-      ear.rotation.z = side * -0.15;
-      g.add(ear);
-    }
-    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), dark);
-    tail.scale.set(2.2, 0.8, 0.8);
-    tail.position.set(-0.6, 0.4, 0);
-    const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), white);
-    tailTip.position.set(-0.74, 0.4, 0);
-    for (let i = 0; i < 4; i++) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.36, 6), dark);
-      leg.position.set(i < 2 ? 0.26 : -0.32, 0.18, i % 2 ? 0.13 : -0.13);
-      leg.castShadow = true;
-      g.add(leg);
-    }
-    g.add(body, saddle, chest, neck, head, muzzle, blaze, tail, tailTip);
-
-    // The ring exists to find the pointer when the whole paddock is in view. Zoomed in it is
-    // just clutter, so it shrinks as the camera closes in.
-    this.dogRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.92, 1.0, 40),
-      new THREE.MeshBasicMaterial({ color: 0x14180f, transparent: true, opacity: 0.28, side: THREE.DoubleSide }),
-    );
-    this.dogRing.rotation.x = -Math.PI / 2;
-    this.dogRing.position.y = 0.01;
-    g.add(this.dogRing);
-    return g;
-  }
 
   /** Change the paddock size in place: rebuilds the ground, the sun's shadow frustum and the camera. */
   setWorld(world: { width: number; height: number }): void {
@@ -787,24 +717,6 @@ export class SheepRenderer {
       }
       this.links.geometry.setDrawRange(0, c * 2);
       (this.links.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    }
-
-    // the dog
-    if (frame.pointer) {
-      this.dog.visible = true;
-      this.dog.position.set(frame.pointer.x, 0, frame.pointer.y);
-      if (this.dogRing) {
-        const r = Math.max(0.35, 1 / this.zoomLevel);
-        this.dogRing.scale.set(r, r, 1);
-        (this.dogRing.material as THREE.MeshBasicMaterial).opacity = 0.28 * Math.min(1, 1.6 / this.zoomLevel);
-      }
-      const sp = Math.hypot(frame.pointer.vx, frame.pointer.vy);
-      if (sp > 0.15) {
-        const target = -Math.atan2(frame.pointer.vy, frame.pointer.vx);
-        this.dog.rotation.y = lerpAngle(this.dog.rotation.y, target, 1 - Math.exp(-dt / 0.12));
-      }
-    } else {
-      this.dog.visible = false;
     }
 
     this.renderer.render(this.scene, this.camera);

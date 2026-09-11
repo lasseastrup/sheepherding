@@ -25,6 +25,8 @@ Every push runs the tests on Ubuntu and, on a Windows runner, builds the overlay
 smoke mode to prove the transparent window comes up, and uploads a portable exe as a workflow
 artifact. The exe is unsigned, so Windows SmartScreen will warn on first launch.
 
+Nothing is drawn for the dog: the mouse pointer itself is the threat the sheep keep away from.
+
 Overlay controls: the tray icon has hide, pause, flock size, sheep size, display, new flock and
 quit; Ctrl+Shift+S hides and shows the flock. The window is click-through, so everything under
 the sheep keeps working.

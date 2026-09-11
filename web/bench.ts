@@ -28,7 +28,7 @@ export async function benchOne(n: number, frames = 60): Promise<Record<string, n
     let prev = sim.writeSnapshot();
     let cur = sim.writeSnapshot();
     // warm up
-    for (let k = 0; k < 10; k++) { sim.tick(); prev = cur; cur = sim.writeSnapshot(); r.render(prev, cur, 0.5, 1 / 30, { debugColours: false, links: false, pointer: null }); }
+    for (let k = 0; k < 10; k++) { sim.tick(); prev = cur; cur = sim.writeSnapshot(); r.render(prev, cur, 0.5, 1 / 30, { debugColours: false, links: false }); }
     // Split the work: our own per-sheep JavaScript (animation, matrices, look-at) against the
     // draw itself, so a slow software rasteriser cannot hide a regression in the CPU path.
     const w = window as unknown as { BENCH_CALM?: boolean; BENCH_OFFSCREEN?: boolean };
@@ -48,7 +48,7 @@ export async function benchOne(n: number, frames = 60): Promise<Record<string, n
       cur = sim.writeSnapshot();
       const b = performance.now();
       simMs += b - a;
-      r.render(prev, cur, 0.5, 1 / 30, { debugColours: false, links: false, pointer: disturb ? { x: world.width * 0.3, y: world.height * 0.5, vx: 1, vy: 0 } : null });
+      r.render(prev, cur, 0.5, 1 / 30, { debugColours: false, links: false });
       jsMs += performance.now() - b;
     }
     gl.finish();

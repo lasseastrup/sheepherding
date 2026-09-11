@@ -425,11 +425,12 @@ herd being driven stays on screen, and panning is clamped so the view never leav
 shadow frustum tracks the visible area rather than the whole field, which is what keeps shadows
 sharp when zoomed in.
 
-Two things follow from a moving camera and are easy to get wrong. The pointer's world position has
+One thing follows from a moving camera and is easy to get wrong: the pointer's world position has
 to be re-derived from its screen position every frame, not only when the mouse moves, or the sheep
-react to the patch of grass the camera has since panned away from. And the ring that marks the dog
-shrinks as the camera closes in: it exists to find the pointer across a whole paddock, and at high
-zoom it is only clutter.
+react to the patch of grass the camera has since panned away from.
+
+Nothing is drawn for the dog. The player's own cursor is the threat, and on a desktop overlay an
+extra animal under the arrow is redundant; the flock's reaction is what communicates the pressure.
 
 ## 13. Performance and the flock ceiling
 
