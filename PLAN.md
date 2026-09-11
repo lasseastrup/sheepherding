@@ -118,6 +118,18 @@ Key design points:
 
 ## 4. Phases
 
+### Progress
+
+| Phase | Status |
+|---|---|
+| 0 Spike | Done differently: the shell went straight to CI. The Windows runner launches the overlay in smoke mode on every push; real-desktop checks (click-through feel, DPI, GPU vendors) remain for a human with a Windows machine. |
+| 1 Flock simulation | Done. 18 tests, 9 behaviour scenarios, see `docs/flock-design.md` §11 for what tuning changed. |
+| 1b Shell integration | Done pending the CI result: Electron overlay with tray, hotkey, fullscreen and lock detection. |
+| 2 Desktop citizenship | Partly done: fullscreen/lock hiding, topmost re-assertion, display hot-plug, idle frame throttling. Not yet: multi-monitor flocks, battery mode, crash watchdog, settings UI beyond the tray. |
+| 3 Selective interaction | Not started. The IPC hook (`overlay:hover`) is reserved. |
+| 4 Gameplay hooks | Not started. |
+| 5 Packaging | Portable exe from CI, unsigned. Installer and signing not started. |
+
 ### Phase 0 — Spike (go/no-go, ~1–2 days)
 Goal: prove the Electron shell on real Windows machines before writing game code.
 1. Vite + three.js page: one animated placeholder sheep, top-down ortho camera, clear alpha 0.
