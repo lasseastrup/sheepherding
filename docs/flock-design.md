@@ -338,8 +338,8 @@ seeded flock and scripted pointer paths:
 |---|---|
 | cohesion | mean distance to centroid, in BL |
 | polarisation | `|Σ v̂ᵢ| / N_moving` |
-| splits | connected components of the neighbour graph at 2.5 BL |
-| jitter | mean |Δheading| per step for sheep below walk speed |
+| splits | connected components of the neighbour graph at 4 BL (two relaxed spacings) |
+| jitter | mean |Δheading| per step for sheep with no movement intent |
 | response distance | pointer distance at which 10 % of the flock leaves GRAZE |
 | response latency | time from zone entry to 50 % of the flock leaving GRAZE |
 | settle time | time from pointer stop until 90 % back in GRAZE |

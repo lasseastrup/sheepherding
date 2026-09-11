@@ -1,0 +1,23 @@
+{
+  "name": "sheepherding",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Desktop sheep herding overlay: flock simulation, three.js renderer, Electron shell",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "screenshot": "node tools/screenshot.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "playwright-core": "^1.56.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  }
+}
