@@ -6,8 +6,19 @@ import { SheepRenderer } from '../src/render3d/sheepRenderer';
 import { Sim, SheepState, STATE_NAMES, type Metrics } from '../src/sim';
 import { SHEEP_GLB_BASE64 } from './generated/sheep-glb';
 
-// a smaller paddock than the desktop overlay uses, so sheep read at a useful size on the page
-const WORLD = { width: 30, height: 16.5 };
+/**
+ * The paddock grows with the flock. Grazing sheep occupy roughly 10-45 BL^2 each in the field;
+ * hold a figure in that range and a flock of 500 spreads out like a flock of 20 rather than
+ * packing into a carpet.
+ */
+const BL2_PER_SHEEP = 14;
+const MIN_WORLD = { width: 30, height: 16.5 };
+function worldFor(count: number): { width: number; height: number } {
+  const area = Math.max(count * BL2_PER_SHEEP, MIN_WORLD.width * MIN_WORLD.height);
+  const width = Math.sqrt(area * (MIN_WORLD.width / MIN_WORLD.height));
+  return { width, height: area / width };
+}
+let WORLD = worldFor(24);
 
 const palette = {
   graze: '#d9d4c2',
@@ -44,12 +55,14 @@ function decodeBase64(b64: string): ArrayBuffer {
 }
 
 function reset(count: number, seed: number): void {
+  WORLD = worldFor(count);
   sim = new Sim({ count, seed, world: WORLD });
   sim.run(20);
   prev = sim.writeSnapshot();
   cur = sim.writeSnapshot();
   metrics = sim.metrics();
   acc = 0;
+  renderer?.setWorld(WORLD);
   renderer?.setCount(count);
 }
 

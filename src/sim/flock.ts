@@ -38,6 +38,8 @@ export class Flock {
   readonly lonely: Uint8Array;
   readonly splitUntil: Float32Array;
   readonly arousal: Float32Array;
+  /** 0 = the threat is novel, 1 = it has hung about harmlessly and is now background */
+  readonly familiarity: Float32Array;
   readonly stamina: Float32Array;
   readonly leader: Int16Array;
   readonly leaderSide: Int8Array; // 0 behind, +1 left, -1 right
@@ -100,7 +102,7 @@ export class Flock {
     this.pressure = f();
     this.lonely = new Uint8Array(capacity);
     this.splitUntil = f();
-    this.arousal = f(); this.stamina = f().fill(1);
+    this.arousal = f(); this.familiarity = f(); this.stamina = f().fill(1);
     this.leader = new Int16Array(capacity).fill(-1);
     this.leaderSide = new Int8Array(capacity);
     this.aloneTime = f(); this.stuckTime = f(); this.nextStepAt = f(); this.stepRemaining = f();
@@ -157,6 +159,7 @@ export class Flock {
       this.leader[i] = -1;
       this.fear[i] = 0;
       this.arousal[i] = 0;
+      this.familiarity[i] = 0;
       this.pressure[i] = 0;
       this.splitUntil[i] = 0;
     }

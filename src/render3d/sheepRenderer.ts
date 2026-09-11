@@ -22,6 +22,8 @@ export interface RendererOptions {
   /** null for a transparent clear (overlay) */
   clearColour?: string | null;
   shadows?: boolean;
+  /** above this flock size, real shadow maps give way to instanced blob shadows */
+  shadowLimit?: number;
 }
 
 export interface FrameOptions {
@@ -37,6 +39,20 @@ const GAITS = [
   { clip: 'run', refSpeed: 4.0 },
 ] as const;
 const STATIONARY = ['idle', 'graze', 'alert'] as const;
+
+/**
+ * Animation is the most expensive thing per sheep, so a big flock updates its mixers in
+ * round-robin slots: anything moving or near the pointer still animates every frame, and the
+ * rest advance in bigger steps less often. Nobody watching a distant grazing ewe can tell.
+ */
+const ANIM_LOD_FROM = 80;
+const ANIM_BUCKETS_MAX = 8;
+
+/** Round-robin slots: more of them for bigger flocks, so per-frame animation cost stays flat. */
+function animBuckets(n: number): number {
+  if (n <= ANIM_LOD_FROM) return 1;
+  return Math.max(2, Math.min(ANIM_BUCKETS_MAX, Math.round(n / 60)));
+}
 
 const STATE_COLOURS: Record<number, number> = {
   [SheepState.Graze]: 0xf2efe4,
@@ -56,10 +72,18 @@ interface SheepInstance {
   neck: THREE.Bone | null;
   head: THREE.Bone | null;
   lookYaw: number;
-  wool: THREE.MeshStandardMaterial[];
+  materials: THREE.MeshStandardMaterial[];
+  /** live shader uniforms for the wool and skin colours of this sheep */
+  tints: { uWool: { value: THREE.Color }; uDark: { value: THREE.Color } }[];
   baseColour: THREE.Color;
   startle: THREE.AnimationAction | null;
   lastFear: number;
+  /** round-robin slot for animation updates when the flock is too big to update every sheep */
+  bucket: number;
+  pendingDt: number;
+  /** set for the frames on which this sheep's pose actually changed */
+  poseDirty: boolean;
+  skeleton: THREE.Skeleton | null;
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -92,6 +116,12 @@ export class SheepRenderer {
   private readonly up = new THREE.Vector3(0, 1, 0);
   private width = 1;
   private height = 1;
+  private ground: THREE.Object3D | null = null;
+  private blobs: THREE.InstancedMesh | null = null;
+  private readonly blobMatrix = new THREE.Matrix4();
+  private readonly tmpColour = new THREE.Color();
+  private frameCounter = 0;
+  private useShadowMap = true;
 
   constructor(options: RendererOptions) {
     this.opts = {
@@ -100,6 +130,7 @@ export class SheepRenderer {
       tuftColour: '#5c7a4f',
       clearColour: '#dfe2d8',
       shadows: true,
+      shadowLimit: 64,
       ...options,
     };
     const { canvas, world } = this.opts;
@@ -126,12 +157,13 @@ export class SheepRenderer {
     sc.bottom = -(world.height / 2 + pad);
     sc.near = 1;
     sc.far = 80;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(1024, 1024);
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.02;
     this.scene.add(this.sun, this.sun.target);
 
-    this.scene.add(this.buildGround());
+    this.ground = this.buildGround();
+    this.scene.add(this.ground);
 
     this.linkPositions = new Float32Array(512 * 6);
     const lg = new THREE.BufferGeometry();
@@ -160,7 +192,6 @@ export class SheepRenderer {
             if ((o as THREE.Mesh).isMesh) {
               o.castShadow = true;
               o.receiveShadow = false;
-              o.frustumCulled = false;
             }
           });
           resolve();
@@ -179,6 +210,9 @@ export class SheepRenderer {
       const tex = new THREE.CanvasTexture(this.grassCanvas());
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(world.width / SheepRenderer.TILE_BL, world.height / SheepRenderer.TILE_BL);
       mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0 });
     } else {
       mat = new THREE.ShadowMaterial({ opacity: 0.32 });
@@ -200,47 +234,48 @@ export class SheepRenderer {
     return group;
   }
 
-  /** Grass drawn once: base colour plus thousands of leaning tuft strokes. */
+  /**
+   * Grass drawn once into a tile that repeats, rather than one texture the size of the paddock:
+   * a 100 BL field would otherwise need a 5000 px canvas, which costs memory and fill rate for
+   * no visible gain. Strokes near an edge are drawn again on the opposite side so the tile wraps.
+   */
+  private static readonly TILE_BL = 16;
+
   private grassCanvas(): HTMLCanvasElement {
-    const { world, groundColour, tuftColour } = this.opts;
+    const { groundColour, tuftColour } = this.opts;
     const px = 48;
     const c = document.createElement('canvas');
-    c.width = Math.round(world.width * px);
-    c.height = Math.round(world.height * px);
+    c.width = Math.round(SheepRenderer.TILE_BL * px);
+    c.height = Math.round(SheepRenderer.TILE_BL * px);
     const g = c.getContext('2d')!;
     g.fillStyle = groundColour;
     g.fillRect(0, 0, c.width, c.height);
     let s = 12345;
     const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-    g.strokeStyle = tuftColour;
     g.lineWidth = 1.4;
-    const n = Math.round((c.width * c.height) / 700);
+    const n = Math.round((c.width * c.height) / 420);
     for (let i = 0; i < n; i++) {
       const x = rnd() * c.width;
       const y = rnd() * c.height;
-      const len = px * (0.08 + rnd() * 0.16);
+      const len = px * (0.06 + rnd() * 0.18);
       const lean = (rnd() - 0.5) * 0.9;
-      g.globalAlpha = 0.25 + rnd() * 0.45;
-      g.beginPath();
-      g.moveTo(x, y);
-      g.lineTo(x + lean * len, y - len);
-      g.stroke();
+      g.strokeStyle = rnd() < 0.22 ? groundColour : tuftColour;
+      g.globalAlpha = 0.18 + rnd() * 0.5;
+      const stroke = (ox: number, oy: number): void => {
+        g.beginPath();
+        g.moveTo(x + ox, y + oy);
+        g.lineTo(x + ox + lean * len, y + oy - len);
+        g.stroke();
+      };
+      stroke(0, 0);
+      // wrap the few strokes that cross a tile edge
+      if (x < len) stroke(c.width, 0);
+      if (x > c.width - len) stroke(-c.width, 0);
+      if (y < len) stroke(0, c.height);
+      if (y > c.height - len) stroke(0, -c.height);
     }
-    // faint patchiness so the field is not one flat tone: soft, dark, and barely there.
-    // sRGB textures amplify light overlays under lighting, so keep these very subtle.
-    for (let i = 0; i < 26; i++) {
-      const r = px * (2 + rnd() * 5);
-      const x = rnd() * c.width;
-      const y = rnd() * c.height;
-      const grad = g.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, 'rgba(10, 20, 8, 0.07)');
-      grad.addColorStop(1, 'rgba(10, 20, 8, 0)');
-      g.globalAlpha = 1;
-      g.fillStyle = grad;
-      g.beginPath();
-      g.arc(x, y, r, 0, Math.PI * 2);
-      g.fill();
-    }
+    // No large soft patches here: the tile repeats across the paddock, and anything bigger than
+    // a tuft turns into a visible grid. Variation has to come from the tufts themselves.
     g.globalAlpha = 1;
     return c;
   }
@@ -279,6 +314,34 @@ export class SheepRenderer {
     return g;
   }
 
+  /** Change the paddock size in place: rebuilds the ground, the sun's shadow frustum and the camera. */
+  setWorld(world: { width: number; height: number }): void {
+    if (world.width === this.opts.world.width && world.height === this.opts.world.height) return;
+    this.opts.world = { ...world };
+    if (this.ground) {
+      this.scene.remove(this.ground);
+      this.ground.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+        else mat?.dispose();
+      });
+    }
+    this.ground = this.buildGround();
+    this.scene.add(this.ground);
+    this.sun.position.set(world.width / 2 - 14, 30, world.height / 2 - 10);
+    this.sun.target.position.set(world.width / 2, 0, world.height / 2);
+    const sc = this.sun.shadow.camera;
+    const pad = 2;
+    sc.left = -(world.width / 2 + pad);
+    sc.right = world.width / 2 + pad;
+    sc.top = world.height / 2 + pad;
+    sc.bottom = -(world.height / 2 + pad);
+    sc.updateProjectionMatrix();
+    this.fitCamera();
+  }
+
   resize(cssWidth: number, cssHeight: number, dpr: number): void {
     this.width = Math.max(1, Math.round(cssWidth * dpr));
     this.height = Math.max(1, Math.round(cssHeight * dpr));
@@ -315,21 +378,62 @@ export class SheepRenderer {
     return { x: hit.x, y: hit.z };
   }
 
-  /** Create or dispose instances to match the flock size. */
+  /** Create or dispose instances to match the flock size, and pick a shadow strategy for it. */
   setCount(n: number): void {
     if (!this.gltf) return;
+    // A shadow map costs a second draw call per sheep. Past a certain flock size that doubling
+    // matters more than the quality, so big flocks get instanced blob shadows instead.
+    const wantShadowMap = this.opts.shadows && n <= this.opts.shadowLimit;
+    if (wantShadowMap !== this.useShadowMap) {
+      this.useShadowMap = wantShadowMap;
+      this.renderer.shadowMap.enabled = wantShadowMap;
+      this.sun.castShadow = wantShadowMap;
+      for (const s of this.sheep) s.root.traverse((o) => { (o as THREE.Mesh).castShadow = wantShadowMap; });
+    }
     while (this.sheep.length > n) {
       const s = this.sheep.pop()!;
       this.scene.remove(s.root);
       s.mixer.stopAllAction();
-      for (const m of s.wool) m.dispose();
+      for (const m of s.materials) m.dispose();
     }
     while (this.sheep.length < n) this.sheep.push(this.makeSheep(this.sheep.length));
+    this.rebuildBlobs(wantShadowMap ? 0 : n);
+  }
+
+  /** One instanced disc per sheep, standing in for a shadow map on large flocks. */
+  private rebuildBlobs(n: number): void {
+    if (this.blobs && this.blobs.count === n) return;
+    if (this.blobs) {
+      this.scene.remove(this.blobs);
+      this.blobs.geometry.dispose();
+      (this.blobs.material as THREE.Material).dispose();
+      this.blobs = null;
+    }
+    if (n === 0) return;
+    const size = 64;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const g = c.getContext('2d')!;
+    const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+    grad.addColorStop(0.6, 'rgba(0,0,0,0.35)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+    const geo = new THREE.PlaneGeometry(1.5, 1.0).rotateX(-Math.PI / 2);
+    this.blobs = new THREE.InstancedMesh(geo, mat, n);
+    this.blobs.frustumCulled = false;
+    this.blobs.renderOrder = -1;
+    this.scene.add(this.blobs);
   }
 
   private makeSheep(index: number): SheepInstance {
     const root = cloneSkeleton(this.gltf!.scene);
-    const wool: THREE.MeshStandardMaterial[] = [];
+    const materials: THREE.MeshStandardMaterial[] = [];
+    const tints: SheepInstance['tints'] = [];
     // per-sheep wool tint: a little warm/cool variation between ewes
     const tint = new THREE.Color(0xf2efe4);
     const seed = ((index * 9301 + 49297) % 233280) / 233280;
@@ -337,19 +441,31 @@ export class SheepRenderer {
     root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      mesh.castShadow = true;
-      mesh.frustumCulled = false;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const cloned = mats.map((m) => {
-        if (m.name === 'Wool') {
-          const c = (m as THREE.MeshStandardMaterial).clone();
-          c.color.copy(tint);
-          wool.push(c);
-          return c;
-        }
-        return m;
-      });
-      mesh.material = Array.isArray(mesh.material) ? cloned : cloned[0];
+      mesh.castShadow = this.useShadowMap;
+      mesh.receiveShadow = false;
+      // Skinned bounds ignore the current pose, so pad them rather than disabling culling: off
+      // screen sheep should cost nothing to draw, and an overlay's flock often straddles an edge.
+      mesh.frustumCulled = true;
+      mesh.geometry.computeBoundingSphere();
+      if (mesh.geometry.boundingSphere) mesh.geometry.boundingSphere.radius *= 1.6;
+      const src = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
+      const mat = src.clone();
+      const uniforms = { uWool: { value: tint.clone() }, uDark: { value: new THREE.Color(0x2f3330) } };
+      mat.color.set(0xffffff);
+      // The model carries one material and a vertex-colour mask: white where there is fleece,
+      // black where there is skin. Resolving the two colours in the shader keeps the sheep a
+      // single draw call while still letting every animal be tinted on its own.
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uWool = uniforms.uWool;
+        shader.uniforms.uDark = uniforms.uDark;
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <color_pars_fragment>', '#include <color_pars_fragment>\nuniform vec3 uWool;\nuniform vec3 uDark;')
+          .replace('#include <color_fragment>', 'diffuseColor.rgb *= mix( uDark, uWool, vColor.r );');
+      };
+      mat.customProgramCacheKey = () => 'sheep-mask';
+      materials.push(mat);
+      tints.push(uniforms);
+      mesh.material = mat;
     });
     const mixer = new THREE.AnimationMixer(root);
     const actions: Record<string, THREE.AnimationAction> = {};
@@ -387,14 +503,37 @@ export class SheepRenderer {
 
     let neck: THREE.Bone | null = null;
     let head: THREE.Bone | null = null;
+    let skeleton: THREE.Skeleton | null = null;
     root.traverse((o) => {
       if ((o as THREE.Bone).isBone) {
         if (o.name === 'Neck') neck = o as THREE.Bone;
         if (o.name === 'Head') head = o as THREE.Bone;
       }
+      const sk = (o as THREE.SkinnedMesh).skeleton;
+      if (sk) skeleton = sk;
     });
+    const instance = { poseDirty: true } as { poseDirty: boolean };
+    if (skeleton) {
+      // Every skinned mesh recomputes its bone matrices and re-uploads its bone texture on every
+      // frame the renderer draws it. For a flock of hundreds that dominates the frame, and most
+      // of it is wasted on sheep whose pose has not changed since the last frame.
+      const sk = skeleton as THREE.Skeleton;
+      const original = sk.update.bind(sk);
+      sk.update = () => {
+        if (!instance.poseDirty) return;
+        instance.poseDirty = false;
+        original();
+      };
+    }
     this.scene.add(root);
-    return { root, mixer, actions, weights, strides, phase: seed, neck, head, lookYaw: 0, wool, baseColour: tint, startle, lastFear: 0 };
+    return {
+      root, mixer, actions, weights, strides, phase: seed, neck, head, lookYaw: 0,
+      materials, tints, baseColour: tint, startle, lastFear: 0,
+      bucket: index, pendingDt: 0,
+      get poseDirty() { return instance.poseDirty; },
+      set poseDirty(v: boolean) { instance.poseDirty = v; },
+      skeleton,
+    };
   }
 
   /** Draw one frame from an interpolated pair of sim snapshots. */
@@ -407,6 +546,9 @@ export class SheepRenderer {
     const tz = cur[5];
     const simDt = 1 / 30;
     const k = 1 - Math.exp(-dt / 0.18);
+    this.frameCounter++;
+    const lod = this.sheep.length > ANIM_LOD_FROM;
+    const buckets = animBuckets(this.sheep.length);
 
     for (let i = 0; i < this.sheep.length; i++) {
       const s = this.sheep[i];
@@ -432,6 +574,22 @@ export class SheepRenderer {
       s.root.position.set(x, 0, z);
       s.root.rotation.set(0, -h, 0);
       s.root.scale.setScalar(scale || 1);
+
+      if (this.blobs) {
+        const sc = scale || 1;
+        this.blobMatrix.makeRotationY(-h);
+        this.blobMatrix.scale(this.tmpV.set(sc, sc, sc));
+        this.blobMatrix.setPosition(x + 0.12 * sc, 0.012, z + 0.16 * sc);
+        this.blobs.setMatrixAt(i, this.blobMatrix);
+      }
+
+      // Sheep that are still, far from the pointer and not frightened only animate on their turn.
+      s.pendingDt += dt;
+      const active = !lod || speed > 0.2 || fear > 0.15 || this.frameCounter % buckets === s.bucket % buckets;
+      if (!active) continue;
+      const animDt = s.pendingDt;
+      s.pendingDt = 0;
+      s.poseDirty = true;
 
       // --- gait blend on speed ---
       const target: Record<string, number> = { idle: 0, graze: 0, alert: 0, walk: 0, trot: 0, run: 0 };
@@ -467,13 +625,13 @@ export class SheepRenderer {
       }
       if (gaitSum > 1e-3) {
         const stride = strideBlend / gaitSum;
-        s.phase = (s.phase + (speed * dt) / stride) % 1;
+        s.phase = (s.phase + (speed * animDt) / stride) % 1;
         for (const g of GAITS) {
           const a = s.actions[g.clip];
           if (a) a.time = s.phase * a.getClip().duration;
         }
       }
-      s.mixer.update(dt);
+      s.mixer.update(animDt);
 
       // --- head look-at: the threat when frightened, otherwise the sheep it is following ---
       let yawTarget = 0;
@@ -492,7 +650,7 @@ export class SheepRenderer {
         yawTarget = Math.atan2(fz * dx - fx * dz, fx * dx + fz * dz);
         yawTarget = Math.max(-1.3, Math.min(1.3, yawTarget));
       }
-      s.lookYaw += (yawTarget - s.lookYaw) * (1 - Math.exp(-dt / 0.16));
+      s.lookYaw += (yawTarget - s.lookYaw) * (1 - Math.exp(-animDt / 0.16));
       if (Math.abs(s.lookYaw) > 1e-3 && (s.neck || s.head)) {
         s.root.updateMatrixWorld(true);
         if (s.neck) this.rotateAboutWorldUp(s.neck, s.lookYaw * 0.4);
@@ -500,9 +658,10 @@ export class SheepRenderer {
       }
 
       // --- colour ---
-      const col = frame.debugColours ? new THREE.Color(STATE_COLOURS[state] ?? 0xffffff) : s.baseColour;
-      for (const m of s.wool) m.color.copy(col);
+      const col = frame.debugColours ? this.tmpColour.setHex(STATE_COLOURS[state] ?? 0xffffff) : s.baseColour;
+      for (const t of s.tints) t.uWool.value.copy(col);
     }
+    if (this.blobs) this.blobs.instanceMatrix.needsUpdate = true;
 
     // follower links
     this.links.visible = frame.links;
@@ -546,6 +705,7 @@ export class SheepRenderer {
 
   dispose(): void {
     this.setCount(0);
+    this.rebuildBlobs(0);
     this.renderer.dispose();
   }
 }

@@ -404,8 +404,60 @@ original 2.5 BL threshold), and jitter excludes sheep that are deliberately turn
 alert sheep facing the threat.
 
 Measured time budget for 20 undisturbed sheep: about 69 % grazing, 30 % walking, the rest alert or
-running. Simulation cost is 84 µs per step at 20 sheep and 374 µs at 60, or 0.25 % and 1.1 % of one
-core at 30 Hz.
+running.
+
+Two further behaviours were added while raising the flock ceiling to 500, both from the research
+rather than from performance work:
+
+8. **Only closing motion applies pressure.** A pointer circling at a constant distance is read as
+   a dog, and widens the flight zone, but does not press: pressure scales with the component of
+   its velocity pointing at the sheep. This is why handlers work in arcs.
+9. **Habituation.** A threat that hangs about without pressing becomes background over about
+   forty seconds, shrinking the effective flight zone by up to 45 %, and that tolerance is lost
+   within seconds the moment it presses. Without it, fear feeds arousal, arousal widens the zone
+   and the zone feeds fear, so a pointer parked nearby escalates into permanent panic.
+
+## 12. Performance and the flock ceiling
+
+The maximum flock is 500. Getting there took one behavioural fix and several engineering ones,
+all measured with `npm run bench` (software WebGL, so the absolute figures are pessimistic; the
+comparisons are the point) and `tools/../scratchpad` profiling of the simulation by phase.
+
+Simulation, per fixed step:
+
+| Flock | Before | After | What changed |
+|---|---|---|---|
+| 20 | 111 µs | 91 µs | |
+| 150 | 737 µs | 430 µs | |
+| 300 | 1999 µs | 830 µs | |
+| 500 | 2907 µs | 1287 µs | |
+
+- **Metrics were quadratic**: every pair was compared for split components and overlap, costing
+  3.9 ms per call at 500. Overlap now reads the contact lists, and splits run union-find over the
+  spatial grid. 3906 µs to 461 µs.
+- **The gather grid was too coarse.** At a 4 BL cell a packed flock puts over a hundred sheep in
+  every 3×3 block. The cell is now 2 BL, and the neighbour search expands ring by ring until the
+  k-th nearest is inside the radius the scanned rings actually guarantee. Stopping merely because
+  k candidates exist returns the wrong neighbours, which silently changes who each sheep follows.
+
+Rendering, per frame at 500 sheep: **411 ms to 40 ms**, with draw calls down from 2019 to 514.
+
+- **One material, not two.** The model carries a vertex-colour mask, white for fleece and black
+  for skin, and the shader resolves both colours from uniforms. One draw call per sheep, and each
+  animal can still be tinted individually.
+- **Blob shadows above 64 sheep.** A shadow map costs a second draw call per animal; instanced
+  discs cost one for the whole flock.
+- **Bone matrices are only recomputed when the pose changed.** Three.js re-uploads every skinned
+  mesh's bone texture on every frame it draws; skipping the sheep that did not animate roughly
+  halved the remaining cost.
+- **Animation runs in round-robin slots** above 80 sheep, with anything moving or frightened still
+  animating every frame, and the ground texture is a repeating tile rather than one texture the
+  size of the paddock.
+
+What is still true at 500: the frame is CPU-bound in three.js's skinning path, not in the
+simulation (1.8 ms) and not in rasterisation. Comfortably smooth flocks are up to about 150.
+Going beyond that properly means baked vertex-animation textures and a single instanced draw for
+the whole flock, which is the documented next step in `docs/research/game-ai-techniques.md`.
 
 ## 12. Build order
 

@@ -127,7 +127,7 @@ export class Sim {
   }
 
   metrics(): Metrics {
-    return computeMetrics(this.flock, this.prevHeading, this.time, this.cfg.kinematics.movingThreshold);
+    return computeMetrics(this.flock, this.prevHeading, this.time, this.cfg.kinematics.movingThreshold, 4.0, this.grid);
   }
 
   /** Write a render snapshot; allocates when `out` is missing or too small. */

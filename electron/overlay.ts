@@ -6,7 +6,7 @@
 import { SheepRenderer } from '../src/render3d/sheepRenderer';
 import { Sim, SheepState } from '../src/sim';
 import { SHEEP_GLB_BASE64 } from '../web/generated/sheep-glb';
-import { DEFAULT_CONFIG, type OverlayBridge, type OverlayConfig } from './ipc';
+import { DEFAULT_CONFIG, MAX_SHEEP, type OverlayBridge, type OverlayConfig } from './ipc';
 
 declare global {
   interface Window {
@@ -39,7 +39,7 @@ function world(): { width: number; height: number } {
 }
 
 function buildSim(): void {
-  sim = new Sim({ count: config.count, seed: config.seed, world: world() });
+  sim = new Sim({ count: Math.min(config.count, MAX_SHEEP), seed: config.seed, world: world() });
   sim.run(20);
   prev = sim.writeSnapshot();
   cur = sim.writeSnapshot();
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   await renderer!.load(glb);
   buildSim();
   renderer!.resize(innerWidth, innerHeight, Math.min(2, devicePixelRatio || 1));
-  renderer!.setCount(config.count);
+  renderer!.setCount(Math.min(config.count, MAX_SHEEP));
 
   bridge?.onPointer((p) => {
     pointer = p.active ? renderer!.screenToWorld(p.x, p.y, innerWidth, innerHeight) : null;
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
       buildRenderer();
       void renderer!.load(glb).then(() => {
         renderer!.resize(innerWidth, innerHeight, Math.min(2, devicePixelRatio || 1));
-        renderer!.setCount(config.count);
+        renderer!.setCount(Math.min(config.count, MAX_SHEEP));
       });
     }
     if (rebuild) buildSim();
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     void renderer!.load(glb).then(() => {
       renderer!.resize(innerWidth, innerHeight, Math.min(2, devicePixelRatio || 1));
       buildSim();
-      renderer!.setCount(config.count);
+      renderer!.setCount(Math.min(config.count, MAX_SHEEP));
     });
   });
 

@@ -26,18 +26,22 @@ scene.render.fps = FPS
 # materials
 # ---------------------------------------------------------------------------------------------
 
-def material(name, rgb, roughness=1.0):
-    mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
-    bsdf = mat.node_tree.nodes['Principled BSDF']
-    bsdf.inputs['Base Color'].default_value = (*rgb, 1.0)
-    bsdf.inputs['Roughness'].default_value = roughness
-    return mat
+# One material, not two. Wool and skin are separated by a vertex-colour mask (white = wool,
+# black = skin) so the whole sheep is a single glTF primitive: one draw call per animal instead
+# of two, which is what makes a flock of hundreds affordable. The renderer reads the mask and
+# supplies both colours as uniforms, so each sheep can still be tinted individually.
+SHEEP_MAT = bpy.data.materials.new('Sheep')
+SHEEP_MAT.use_nodes = True
+_nodes = SHEEP_MAT.node_tree.nodes
+_bsdf = _nodes['Principled BSDF']
+_bsdf.inputs['Roughness'].default_value = 0.95
+_attr = _nodes.new('ShaderNodeVertexColor')
+_attr.layer_name = 'Mask'
+SHEEP_MAT.node_tree.links.new(_attr.outputs['Color'], _bsdf.inputs['Base Color'])
+MATERIALS = [SHEEP_MAT]
 
-
-WOOL = material('Wool', (0.93, 0.90, 0.82))
-DARK = material('Dark', (0.13, 0.11, 0.10), 0.8)
-MATERIALS = [WOOL, DARK]
+WOOL_MASK = 0
+SKIN_MASK = 1
 
 # ---------------------------------------------------------------------------------------------
 # mesh: one bmesh, parts tagged with vertex groups (rigid skinning) and material indices
@@ -48,8 +52,11 @@ groups = {}  # name -> list of vertex indices
 rng = random.Random(7)
 
 
-def add_part(group, mat_index, op, **kwargs):
-    """Run a bmesh create op, tag its new verts with a group and its faces with a material."""
+mask_of = {}  # vertex index -> WOOL_MASK or SKIN_MASK
+
+
+def add_part(group, mask, op, **kwargs):
+    """Run a bmesh create op, tag its new verts with a bone group and a wool/skin mask."""
     v0 = len(bm.verts)
     f0 = len(bm.faces)
     op(bm, **kwargs)
@@ -57,8 +64,10 @@ def add_part(group, mat_index, op, **kwargs):
     bm.faces.ensure_lookup_table()
     verts = [v for v in bm.verts[v0:]]
     groups.setdefault(group, []).extend(v.index for v in verts)
+    for v in verts:
+        mask_of[v.index] = mask
     for f in bm.faces[f0:]:
-        f.material_index = mat_index
+        f.material_index = 0
         f.smooth = False
     return verts
 
@@ -72,7 +81,7 @@ def xform(loc, scale=(1, 1, 1), rot=(0, 0, 0)):
 
 
 # fleece: a chunky icosphere, lumpy along its normals so it reads as wool
-body = add_part('Spine', 0, bmesh.ops.create_icosphere, subdivisions=2, radius=1.0,
+body = add_part('Spine', WOOL_MASK, bmesh.ops.create_icosphere, subdivisions=2, radius=1.0,
                 matrix=xform((-0.06, 0, 0.55), (0.42, 0.26, 0.24)))
 for v in body:
     n = v.normal.copy()
@@ -80,28 +89,28 @@ for v in body:
         continue
     v.co += n * rng.uniform(-0.012, 0.028)
 # tail: a wool nub
-add_part('Spine', 0, bmesh.ops.create_icosphere, subdivisions=1, radius=1.0,
+add_part('Spine', WOOL_MASK, bmesh.ops.create_icosphere, subdivisions=1, radius=1.0,
          matrix=xform((-0.50, 0, 0.60), (0.06, 0.05, 0.05)))
 # neck: dark, joins fleece to head
-add_part('Neck', 1, bmesh.ops.create_cone, cap_ends=True, cap_tris=False, segments=8,
+add_part('Neck', SKIN_MASK, bmesh.ops.create_cone, cap_ends=True, cap_tris=False, segments=8,
          radius1=0.075, radius2=0.06, depth=0.24,
          matrix=xform((0.42, 0, 0.62), rot=(0, math.radians(-70), 0)))
 # head: dark, slightly long
-add_part('Head', 1, bmesh.ops.create_icosphere, subdivisions=1, radius=1.0,
+add_part('Head', SKIN_MASK, bmesh.ops.create_icosphere, subdivisions=1, radius=1.0,
          matrix=xform((0.60, 0, 0.66), (0.13, 0.085, 0.09)))
 # muzzle
-add_part('Head', 1, bmesh.ops.create_cube, size=1.0, matrix=xform((0.71, 0, 0.62), (0.10, 0.09, 0.08)))
+add_part('Head', SKIN_MASK, bmesh.ops.create_cube, size=1.0, matrix=xform((0.71, 0, 0.62), (0.10, 0.09, 0.08)))
 # forelock: a wool cap on the head, the Merino look
-add_part('Head', 0, bmesh.ops.create_icosphere, subdivisions=1, radius=1.0,
+add_part('Head', WOOL_MASK, bmesh.ops.create_icosphere, subdivisions=1, radius=1.0,
          matrix=xform((0.56, 0, 0.73), (0.10, 0.09, 0.055)))
 # ears: flattened, angled out and slightly back
 for side, grp in ((1, 'Ear_L'), (-1, 'Ear_R')):
-    add_part(grp, 1, bmesh.ops.create_cube, size=1.0,
+    add_part(grp, SKIN_MASK, bmesh.ops.create_cube, size=1.0,
              matrix=xform((0.56, side * 0.14, 0.72), (0.05, 0.11, 0.025),
                           rot=(side * math.radians(25), 0, side * math.radians(-20))))
 # legs: rigid, hang from the fleece
 for name, x, y in (('Leg_FL', 0.26, 0.15), ('Leg_FR', 0.26, -0.15), ('Leg_BL', -0.30, 0.15), ('Leg_BR', -0.30, -0.15)):
-    add_part(name, 1, bmesh.ops.create_cone, cap_ends=True, cap_tris=False, segments=7,
+    add_part(name, SKIN_MASK, bmesh.ops.create_cone, cap_ends=True, cap_tris=False, segments=7,
              radius1=0.045, radius2=0.04, depth=0.42, matrix=xform((x, y, 0.21)))
 
 mesh = bpy.data.meshes.new('Sheep')
@@ -109,6 +118,11 @@ bm.to_mesh(mesh)
 bm.free()
 for m in MATERIALS:
     mesh.materials.append(m)
+# wool/skin mask as a colour attribute
+colour = mesh.color_attributes.new(name='Mask', type='FLOAT_COLOR', domain='POINT')
+for i in range(len(mesh.vertices)):
+    v = 0.0 if mask_of.get(i, WOOL_MASK) == SKIN_MASK else 1.0
+    colour.data[i].color = (v, v, v, 1.0)
 sheep = bpy.data.objects.new('Sheep', mesh)
 scene.collection.objects.link(sheep)
 for name, idx in groups.items():
@@ -347,6 +361,8 @@ bpy.ops.export_scene.gltf(
     export_texcoords=False,
     export_normals=True,
     export_materials='EXPORT',
+    export_vertex_color='ACTIVE',
+    export_all_vertex_colors=False,
     export_cameras=False,
     export_lights=False,
 )

@@ -260,7 +260,7 @@
         <div class="controls">
           <div class="row">
             <label for="count">Flock size</label>
-            <input type="range" id="count" min="4" max="80" step="1" value="24">
+            <input type="range" id="count" min="4" max="500" step="1" value="24">
             <span class="val" id="count-val">24</span>
           </div>
           <div class="buttons">
@@ -319,6 +319,9 @@
 
   <footer>
     <p style="margin:0">
+      Flock size runs to 500. Past roughly 150 the sheep stop casting real shadows and start
+      animating in rotation rather than every frame, which is what keeps a big flock affordable;
+      the paddock also grows with the flock so the grazing density stays realistic.
       Behaviour follows the published field work: intermittent grazing and avalanche
       re-packing (Ginelli et al. 2015), running to the flock centre rather than away from the
       dog (King et al. 2012), the shepherd&rsquo;s repulsion and local-centre attraction model

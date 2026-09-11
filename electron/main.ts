@@ -147,15 +147,15 @@ function refreshTray(): void {
     },
     {
       label: 'Flock size',
-      submenu: [8, 12, 16, 24, 32, 48].map((n) => ({
+      submenu: [8, 16, 24, 48, 100, 200, 350, 500].map((n) => ({
         label: `${n} sheep`, type: 'radio', checked: settings.count === n,
         click: () => { settings.count = n; saveSettings(settings); pushConfig(); },
       })),
     },
     {
       label: 'Sheep size',
-      submenu: [32, 44, 60, 80].map((px) => ({
-        label: px === 44 ? 'Normal' : px < 44 ? 'Small' : px === 60 ? 'Large' : 'Huge', type: 'radio', checked: settings.pxPerBL === px,
+      submenu: ([[18, 'Tiny'], [26, 'Small'], [44, 'Normal'], [60, 'Large'], [80, 'Huge']] as const).map(([px, label]) => ({
+        label, type: 'radio', checked: settings.pxPerBL === px,
         click: () => { settings.pxPerBL = px; saveSettings(settings); pushConfig(); },
       })),
     },

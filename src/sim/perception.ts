@@ -51,13 +51,21 @@ export class Perception {
         // a still pointer is a standing human; a moving one is a dog
         const motion = Math.min(1, Math.max(0, (threat.speed - P.idleSpeed) / (P.dogSpeed - P.idleSpeed)));
         const baseZone = P.zoneIdle + (P.zoneDog - P.zoneIdle) * motion;
-        const zone = (baseZone * (0.8 + 0.4 * flock.arousal[i])) / flock.boldness[i];
+        // Arousal widens the flight zone and fear feeds arousal, so without habituation a threat
+        // that merely hangs about at the edge escalates into permanent panic. Sheep do the
+        // opposite: a dog that keeps its distance becomes part of the scenery.
+        const habituated = 1 - P.habituationStrength * flock.familiarity[i];
+        const zone = (baseZone * (0.8 + 0.4 * flock.arousal[i]) * habituated) / flock.boldness[i];
         // is the threat closing on me?
         let toward = 0;
         if (threat.speed > 1e-3 && d > 1e-3) {
           toward = -((dx / d) * (threat.vx / threat.speed) + (dy / d) * (threat.vy / threat.speed));
         }
-        const speedFactor = 1 + P.speedGain * Math.min(2, threat.speed / cfg.run.speed);
+        // Only motion that closes on the sheep counts as pressure. A dog circling at a constant
+        // distance is read as a dog (it widens the zone above) but is not pressing, which is
+        // exactly why handlers work in arcs and why a wide circle steadies a flock.
+        const closing = Math.max(0, toward) * threat.speed;
+        const speedFactor = 1 + P.speedGain * Math.min(2, closing / cfg.run.speed);
         const directness = 1 + P.directnessGain * Math.max(0, toward);
         // behind me and out of sight: only proximity registers
         const hx = Math.cos(flock.heading[i]);
@@ -129,6 +137,14 @@ export class Perception {
       let arousal = Math.min(1, Math.max(flock.arousal[i], P.arousalGain * fear));
       arousal *= Math.exp(-dt / P.arousalTau);
       flock.arousal[i] = arousal;
+
+      // Habituation: build tolerance while the threat is perceptible but not pressing, lose it
+      // quickly the moment it presses, and forget it slowly once it is gone entirely.
+      let fam = flock.familiarity[i];
+      if (pressure > P.habituationBreak) fam -= dt / P.habituationLossTau;
+      else if (pressure > 0.02) fam += dt / P.habituationGainTau;
+      else fam -= dt / P.habituationForgetTau;
+      flock.familiarity[i] = Math.min(1, Math.max(0, fam));
     }
 
     // publish this step's fear for the neighbours to read next step

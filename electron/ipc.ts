@@ -42,6 +42,9 @@ export const CHANNELS = {
   hover: 'overlay:hover',
 } as const;
 
+/** The renderer keeps up with a flock this size; past it, expect the frame rate to fall away. */
+export const MAX_SHEEP = 500;
+
 export const DEFAULT_CONFIG: OverlayConfig = {
   count: 16,
   seed: 3,

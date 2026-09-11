@@ -112,6 +112,11 @@ export interface SimConfig {
     arousalGain: number;
     arousalTau: number;
     lonelyFear: number;
+    habituationStrength: number;
+    habituationGainTau: number;
+    habituationLossTau: number;
+    habituationBreak: number;
+    habituationForgetTau: number;
   };
   fear: {
     alertEnter: number;
@@ -164,7 +169,7 @@ export function defaultConfig(): SimConfig {
       kVisible: 6,
       fovDeg: 300,
       occlusionDeg: 12,
-      gatherCell: 4,
+      gatherCell: 2,
     },
     personality: {
       scale: [0.9, 1.1],
@@ -263,6 +268,11 @@ export function defaultConfig(): SimConfig {
       arousalGain: 0.6,
       arousalTau: 120,
       lonelyFear: 0.3,
+      habituationStrength: 0.45,
+      habituationGainTau: 40,
+      habituationLossTau: 5,
+      habituationBreak: 0.8,
+      habituationForgetTau: 300,
     },
     fear: {
       alertEnter: 0.15,

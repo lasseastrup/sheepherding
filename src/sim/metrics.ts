@@ -1,4 +1,5 @@
 import { Flock, MAX_CONTACTS } from './flock';
+import type { UniformGrid } from './grid';
 import { SheepState } from './types';
 
 export interface Metrics {
@@ -27,13 +28,28 @@ export interface Metrics {
 }
 
 const parent = new Int32Array(1024);
+const rank = new Int32Array(1024);
 
 function find(a: number): number {
   while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; }
   return a;
 }
 
-export function computeMetrics(flock: Flock, prevHeading: Float32Array, time: number, movingThreshold = 0.15, splitDist = 4.0): Metrics {
+function union(a: number, b: number): void {
+  a = find(a);
+  b = find(b);
+  if (a === b) return;
+  if (rank[a] < rank[b]) { parent[a] = b; } else if (rank[a] > rank[b]) { parent[b] = a; } else { parent[b] = a; rank[a]++; }
+}
+
+export function computeMetrics(
+  flock: Flock,
+  prevHeading: Float32Array,
+  time: number,
+  movingThreshold = 0.15,
+  splitDist = 4.0,
+  grid?: UniformGrid,
+): Metrics {
   const n = flock.count;
   let cx = 0;
   let cy = 0;
@@ -75,24 +91,56 @@ export function computeMetrics(flock: Flock, prevHeading: Float32Array, time: nu
   }
   for (let s = 0; s < fractions.length; s++) fractions[s] /= Math.max(1, n);
 
-  // splits via union-find over pairs within splitDist (O(n^2), fine for a few hundred)
-  for (let i = 0; i < n; i++) parent[i] = i;
+  // Max penetration, from the contact lists. Those are built before integration, but nothing
+  // moves more than ~0.2 BL in a step and the contact range is ~1.9 BL, so any pair that ends
+  // the step overlapping was certainly a contact at the start of it.
   let overlap = 0;
   for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const d = Math.hypot(flock.px[i] - flock.px[j], flock.py[i] - flock.py[j]);
-      if (d < splitDist) {
-        const a = find(i);
-        const b = find(j);
-        if (a !== b) parent[a] = b;
-      }
-      const pen = flock.radius[i] + flock.radius[j] - d;
+    const cb = i * MAX_CONTACTS;
+    for (let q = 0; q < flock.contactCount[i]; q++) {
+      const j = flock.contacts[cb + q];
+      if (j <= i) continue;
+      const pen = flock.radius[i] + flock.radius[j] - Math.hypot(flock.px[i] - flock.px[j], flock.py[i] - flock.py[j]);
       if (pen > overlap) overlap = pen;
+    }
+  }
+
+  // Splits: union-find over pairs within splitDist. With a grid this is linear in the flock
+  // size; without one it falls back to every pair, which is only affordable for small flocks.
+  for (let i = 0; i < n; i++) { parent[i] = i; rank[i] = 0; }
+  if (grid && grid.cellSize >= splitDist) {
+    grid.build(flock.px, flock.py, n);
+    const d2 = splitDist * splitDist;
+    for (let i = 0; i < n; i++) {
+      const cx = grid.cellX(flock.px[i]);
+      const cy = grid.cellY(flock.py[i]);
+      for (let gy = cy - 1; gy <= cy + 1; gy++) {
+        if (gy < 0 || gy >= grid.rows) continue;
+        for (let gx = cx - 1; gx <= cx + 1; gx++) {
+          if (gx < 0 || gx >= grid.cols) continue;
+          const c = gy * grid.cols + gx;
+          for (let q = grid.cellStart[c]; q < grid.cellStart[c + 1]; q++) {
+            const j = grid.cellItems[q];
+            if (j <= i) continue;
+            const dx = flock.px[i] - flock.px[j];
+            const dy = flock.py[i] - flock.py[j];
+            if (dx * dx + dy * dy < d2) union(i, j);
+          }
+        }
+      }
+    }
+  } else {
+    const d2 = splitDist * splitDist;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = flock.px[i] - flock.px[j];
+        const dy = flock.py[i] - flock.py[j];
+        if (dx * dx + dy * dy < d2) union(i, j);
+      }
     }
   }
   let comps = 0;
   for (let i = 0; i < n; i++) if (find(i) === i) comps++;
-  void MAX_CONTACTS;
 
   return {
     time,

@@ -18,6 +18,7 @@ npm run build:page          # rebuilds web/sheepdog-trial.html, the playable 3D 
 npm run electron            # the desktop overlay (Windows is the target; needs a display)
 npm run dist:win            # unsigned portable exe in release/
 npm run assets:sheep        # regenerate assets/sheep.glb (needs `pip install bpy==4.2.*`)
+npm run bench               # headless render benchmark (--calm, --offscreen, or a size list)
 ```
 
 Every push runs the tests on Ubuntu and, on a Windows runner, builds the overlay, launches it in
@@ -36,6 +37,9 @@ the sheep keeps working.
 - `web/` the playable page (`template.html` + `app.ts` build to `sheepdog-trial.html`)
 - `tools/blender/` the sheep model, rig and clips as a Blender Python script
 - `test/` vitest scenarios; `TRACE=1 npx vitest run test/trace.test.ts` prints a tuning table
+
+Flocks run to 500. Past about 150 the renderer drops real shadows for blob shadows and animates
+sheep in rotation; see `docs/flock-design.md` §12 for the measurements.
 
 Status: milestones 1 to 5 of the flock plan done, shell in CI. Documents:
 

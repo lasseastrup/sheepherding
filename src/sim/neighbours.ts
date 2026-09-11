@@ -2,7 +2,13 @@ import type { SimConfig } from './config';
 import { Flock, MAX_CONTACTS, MAX_NEIGHBOURS } from './flock';
 import type { UniformGrid } from './grid';
 
-const MAX_CAND = 96;
+/**
+ * How many nearest candidates to keep per sheep. It only has to cover the contact list plus
+ * enough spares for the field-of-view and occlusion filters to still find k visible neighbours.
+ * Keeping it small matters: a packed flock puts well over a hundred sheep in the gathered cells,
+ * and every extra slot is another shift in the insertion sort.
+ */
+const MAX_CAND = 28;
 const candIdx = new Int32Array(MAX_CAND);
 const candDist = new Float32Array(MAX_CAND);
 const candDx = new Float32Array(MAX_CAND);
@@ -49,36 +55,40 @@ export function computeNeighbours(flock: Flock, grid: UniformGrid, cfg: SimConfi
     const yi = py[i];
     let cc = 0;
 
-    // gather from the 3x3 cells
+    // Gather from the 3x3 cells, then expand ring by ring until there are enough candidates for
+    // the topological neighbourhood. A dispersed flock needs the extra rings; a packed one never
+    // leaves the first. Expanding beats rescanning the whole flock, which is what a big dispersed
+    // flock used to cost.
     const cx = grid.cellX(xi);
     const cy = grid.cellY(yi);
-    for (let gy = cy - 1; gy <= cy + 1; gy++) {
-      if (gy < 0 || gy >= grid.rows) continue;
-      for (let gx = cx - 1; gx <= cx + 1; gx++) {
-        if (gx < 0 || gx >= grid.cols) continue;
-        const c = gy * grid.cols + gx;
-        for (let q = grid.cellStart[c]; q < grid.cellStart[c + 1]; q++) {
-          const j = grid.cellItems[q];
-          if (j === i) continue;
-          const dx = px[j] - xi;
-          const dy = py[j] - yi;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          const inv = d > 1e-6 ? 1 / d : 0;
-          cc = insertCandidate(cc, j, d, dx * inv, dy * inv);
+    const maxRing = Math.max(grid.cols, grid.rows);
+    for (let ring = 1; ring <= maxRing; ring++) {
+      for (let gy = cy - ring; gy <= cy + ring; gy++) {
+        if (gy < 0 || gy >= grid.rows) continue;
+        const edgeRow = gy === cy - ring || gy === cy + ring;
+        for (let gx = cx - ring; gx <= cx + ring; gx++) {
+          if (gx < 0 || gx >= grid.cols) continue;
+          // only the newly reached cells: the inner ones were gathered on an earlier pass
+          if (ring > 1 && !edgeRow && gx !== cx - ring && gx !== cx + ring) continue;
+          const c = gy * grid.cols + gx;
+          for (let q = grid.cellStart[c]; q < grid.cellStart[c + 1]; q++) {
+            const j = grid.cellItems[q];
+            if (j === i) continue;
+            const dx = px[j] - xi;
+            const dy = py[j] - yi;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            const inv = d > 1e-6 ? 1 / d : 0;
+            cc = insertCandidate(cc, j, d, dx * inv, dy * inv);
+          }
         }
       }
-    }
-    // topological neighbours need k candidates; fall back to a full scan when the cells are sparse
-    if (cc < k && n > 1) {
-      cc = 0;
-      for (let j = 0; j < n; j++) {
-        if (j === i) continue;
-        const dx = px[j] - xi;
-        const dy = py[j] - yi;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        const inv = d > 1e-6 ? 1 / d : 0;
-        cc = insertCandidate(cc, j, d, dx * inv, dy * inv);
-      }
+      // Having k candidates is not enough to stop: a sheep in the next ring can be nearer than
+      // one already found, because cells are squares. Once every ring up to r has been scanned,
+      // everything within r * cellSize is certainly in the list, so it is safe to stop only when
+      // the k-th nearest is inside that radius. Anything looser silently returns the wrong
+      // neighbours, which changes who each sheep follows and flocks toward.
+      if (cc >= n - 1) break;
+      if (cc >= k && candDist[k - 1] <= ring * grid.cellSize) break;
     }
 
     flock.nearestDist[i] = cc > 0 ? candDist[0] : FAR;
