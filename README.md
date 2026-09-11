@@ -39,7 +39,9 @@ the sheep keeps working.
 - `test/` vitest scenarios; `TRACE=1 npx vitest run test/trace.test.ts` prints a tuning table
 
 Flocks run to 500. Past about 150 the renderer drops real shadows for blob shadows and animates
-sheep in rotation; see `docs/flock-design.md` §12 for the measurements.
+sheep in rotation; see `docs/flock-design.md` §12 for the measurements. Zoom with the wheel, the
+slider, or the + and - keys, and 0 returns to the whole paddock; once zoomed in the camera
+follows the flock.
 
 Status: milestones 1 to 5 of the flock plan done, shell in CI. Documents:
 

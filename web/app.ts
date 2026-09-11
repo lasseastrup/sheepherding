@@ -32,6 +32,8 @@ interface Ui {
   census: HTMLElement;
   readouts: Record<string, HTMLElement>;
   hint: HTMLElement;
+  zoom: HTMLInputElement;
+  zoomVal: HTMLElement;
 }
 
 let sim = new Sim({ count: 24, seed: 3, world: WORLD });
@@ -43,6 +45,8 @@ let paused = false;
 let debugColours = false;
 let showLinks = false;
 let pointer: { x: number; y: number } | null = null;
+/** last pointer position in canvas pixels; the world point is re-derived every frame */
+let pointerScreen: { x: number; y: number } | null = null;
 let metrics: Metrics = sim.metrics();
 let hasHerded = false;
 let renderer: SheepRenderer | null = null;
@@ -125,7 +129,15 @@ export async function start(ui: Ui): Promise<void> {
 
   const setPointer = (clientX: number, clientY: number): void => {
     const rect = ui.canvas.getBoundingClientRect();
-    pointer = renderer!.screenToWorld(clientX - rect.left, clientY - rect.top, rect.width, rect.height);
+    pointerScreen = { x: clientX - rect.left, y: clientY - rect.top };
+  };
+  // The camera pans while the flock moves, so the same screen position is a different patch of
+  // grass from one frame to the next. Re-derive the dog's world position every frame or the sheep
+  // end up reacting to a spot the pointer left behind.
+  const syncPointer = (): void => {
+    if (!pointerScreen) { pointer = null; return; }
+    const rect = ui.canvas.getBoundingClientRect();
+    pointer = renderer!.screenToWorld(pointerScreen.x, pointerScreen.y, rect.width, rect.height);
   };
   ui.canvas.addEventListener('pointermove', (e) => {
     setPointer(e.clientX, e.clientY);
@@ -135,7 +147,30 @@ export async function start(ui: Ui): Promise<void> {
     setPointer(e.clientX, e.clientY);
     ui.canvas.setPointerCapture(e.pointerId);
   });
-  ui.canvas.addEventListener('pointerleave', () => { pointer = null; });
+  ui.canvas.addEventListener('pointerleave', () => { pointerScreen = null; pointer = null; });
+
+  const applyZoom = (z: number): void => {
+    const applied = renderer!.setZoom(z);
+    ui.zoom.value = applied.toFixed(1);
+    ui.zoomVal.textContent = `${applied.toFixed(1)}×`;
+  };
+  ui.zoom.addEventListener('input', () => applyZoom(Number(ui.zoom.value)));
+  ui.canvas.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      applyZoom(renderer!.zoom * Math.exp(-e.deltaY * 0.0015));
+      setPointer(e.clientX, e.clientY);
+    },
+    { passive: false },
+  );
+  addEventListener('keydown', (e) => {
+    if (e.target !== document.body) return;
+    if (e.key === '+' || e.key === '=') applyZoom(renderer!.zoom * 1.25);
+    else if (e.key === '-' || e.key === '_') applyZoom(renderer!.zoom / 1.25);
+    else if (e.key === '0') applyZoom(1);
+  });
+  applyZoom(Number(ui.zoom.value) || 1);
 
   const frame = (): void => {
     requestAnimationFrame(frame);
@@ -143,6 +178,7 @@ export async function start(ui: Ui): Promise<void> {
     let ft = (now - last) / 1000;
     last = now;
     if (ft > 0.25) ft = 0.25;
+    syncPointer();
     if (!paused) {
       acc += ft;
       const dt = sim.cfg.dt;
@@ -179,7 +215,7 @@ export const controls = {
   isPaused: () => paused,
   setDebugColours: (v: boolean) => { debugColours = v; },
   setLinks: (v: boolean) => { showLinks = v; },
-  snapshot: () => ({ count: sim.cfg.count, seed: sim.cfg.seed, paused, debugColours, showLinks }),
+  snapshot: () => ({ count: sim.cfg.count, seed: sim.cfg.seed, paused, debugColours, showLinks, zoom: renderer?.zoom ?? 1 }),
 };
 
 declare global {

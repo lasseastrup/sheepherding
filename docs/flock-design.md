@@ -417,7 +417,21 @@ rather than from performance work:
    within seconds the moment it presses. Without it, fear feeds arousal, arousal widens the zone
    and the zone feeds fear, so a pointer parked nearby escalates into permanent panic.
 
-## 12. Performance and the flock ceiling
+## 12. Camera
+
+The paddock view is an orthographic camera tilted about 24 degrees off straight down. At zoom 1
+it frames the whole paddock; above that it closes in and eases toward the flock's centroid, so a
+herd being driven stays on screen, and panning is clamped so the view never leaves the fences. The
+shadow frustum tracks the visible area rather than the whole field, which is what keeps shadows
+sharp when zoomed in.
+
+Two things follow from a moving camera and are easy to get wrong. The pointer's world position has
+to be re-derived from its screen position every frame, not only when the mouse moves, or the sheep
+react to the patch of grass the camera has since panned away from. And the ring that marks the dog
+shrinks as the camera closes in: it exists to find the pointer across a whole paddock, and at high
+zoom it is only clutter.
+
+## 13. Performance and the flock ceiling
 
 The maximum flock is 500. Getting there took one behavioural fix and several engineering ones,
 all measured with `npm run bench` (software WebGL, so the absolute figures are pessimistic; the
