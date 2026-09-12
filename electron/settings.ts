@@ -8,7 +8,13 @@ export interface Settings extends OverlayConfig {
   displayId: number | null;
 }
 
-const DEFAULTS: Settings = { ...DEFAULT_CONFIG, displayId: null };
+/** Everything the tuning window can change, minus the bits that are not the overlay's config. */
+export type TunableKey = Exclude<keyof Settings, 'displayId'>;
+
+/** Fresh copy each time: `sim` is mutated in place as the tuning window edits it. */
+function defaults(): Settings {
+  return { ...DEFAULT_CONFIG, sim: {}, displayId: null };
+}
 
 function file(): string {
   return join(app.getPath('userData'), 'settings.json');
@@ -17,9 +23,9 @@ function file(): string {
 export function loadSettings(): Settings {
   try {
     const parsed = JSON.parse(readFileSync(file(), 'utf8')) as Partial<Settings>;
-    return { ...DEFAULTS, ...parsed };
+    return { ...defaults(), ...parsed, sim: parsed.sim ?? {} };
   } catch {
-    return { ...DEFAULTS };
+    return defaults();
   }
 }
 

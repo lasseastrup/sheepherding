@@ -1,5 +1,7 @@
 /** Messages between the Electron main process and the overlay renderer. */
 
+import type { DeepPartial, SimConfig } from '../src/sim';
+
 export interface OverlayConfig {
   count: number;
   seed: number;
@@ -9,6 +11,19 @@ export interface OverlayConfig {
   paused: boolean;
   /** camera pitch away from straight down, degrees */
   tiltDeg: number;
+  /** draw a line from each follower to the sheep it is following */
+  links: boolean;
+  /** behavioural overrides on top of the simulation defaults */
+  sim: DeepPartial<SimConfig>;
+}
+
+export interface OverlayMetrics {
+  fps: number;
+  cohesion: number;
+  nnd: number;
+  polarisation: number;
+  splits: number;
+  fractions: number[];
 }
 
 export interface PointerMsg {
@@ -29,10 +44,20 @@ export interface ReadyMsg {
 
 export interface OverlayBridge {
   onPointer(cb: (p: PointerMsg) => void): void;
-  onConfig(cb: (c: OverlayConfig) => void): void;
+  onConfig(cb: (c: OverlayConfig, rebuild: boolean) => void): void;
   ready(msg: ReadyMsg): void;
   /** the renderer reports whether the pointer is over a sheep, for selective click-through later */
   hover(overSheep: boolean): void;
+  metrics(m: OverlayMetrics): void;
+}
+
+/** The tuning window's side of the bridge. */
+export interface TuningBridge {
+  onState(cb: (c: OverlayConfig) => void): void;
+  onMetrics(cb: (m: OverlayMetrics) => void): void;
+  setSim(path: string, value: unknown, rebuild: boolean): void;
+  setFlock(key: string, value: number | boolean): void;
+  action(name: 'reset' | 'respawn' | 'save', payload?: unknown): void;
 }
 
 export const CHANNELS = {
@@ -40,6 +65,12 @@ export const CHANNELS = {
   config: 'overlay:config',
   ready: 'overlay:ready',
   hover: 'overlay:hover',
+  metrics: 'overlay:metrics',
+  tuningState: 'tuning:state',
+  tuningMetrics: 'tuning:metrics',
+  tuningSim: 'tuning:sim',
+  tuningFlock: 'tuning:flock',
+  tuningAction: 'tuning:action',
 } as const;
 
 /** The renderer keeps up with a flock this size; past it, expect the frame rate to fall away. */
@@ -52,4 +83,6 @@ export const DEFAULT_CONFIG: OverlayConfig = {
   pxPerBL: 44,
   paused: false,
   tiltDeg: 12,
+  links: false,
+  sim: {},
 };

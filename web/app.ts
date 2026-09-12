@@ -3,7 +3,8 @@
  * 30 Hz, three.js sheep rendered with interpolation, the pointer as the dog.
  */
 import { SheepRenderer } from '../src/render3d/sheepRenderer';
-import { Sim, SheepState, STATE_NAMES, type Metrics } from '../src/sim';
+import { defaultConfig, Sim, SheepState, STATE_NAMES, type Metrics, type SimConfig } from '../src/sim';
+import { createTuningPanel, type TuningPanel } from '../src/tuning/panel';
 import { SHEEP_GLB_BASE64 } from './generated/sheep-glb';
 
 /**
@@ -47,9 +48,14 @@ let showLinks = false;
 let pointer: { x: number; y: number } | null = null;
 /** last pointer position in canvas pixels; the world point is re-derived every frame */
 let pointerScreen: { x: number; y: number } | null = null;
+let lastPanelUpdate = 0;
 let metrics: Metrics = sim.metrics();
 let hasHerded = false;
 let renderer: SheepRenderer | null = null;
+/** the live source of truth for behaviour: the tuning panel edits this object in place */
+const tuningConfig: SimConfig = defaultConfig();
+let panel: TuningPanel | null = null;
+let fps = 0;
 
 function decodeBase64(b64: string): ArrayBuffer {
   const bin = atob(b64);
@@ -60,7 +66,7 @@ function decodeBase64(b64: string): ArrayBuffer {
 
 function reset(count: number, seed: number): void {
   WORLD = worldFor(count);
-  sim = new Sim({ count, seed, world: WORLD });
+  sim = new Sim({ ...tuningConfig, count, seed, world: WORLD });
   sim.run(20);
   prev = sim.writeSnapshot();
   cur = sim.writeSnapshot();
@@ -197,6 +203,11 @@ export async function start(ui: Ui): Promise<void> {
         updateReadouts(ui);
       }
     }
+    fps += (1 / Math.max(1e-3, ft) - fps) * 0.1;
+    if (panel && now - lastPanelUpdate > 250) {
+      lastPanelUpdate = now;
+      panel.setMetrics({ fps, cohesion: metrics.cohesion, nnd: metrics.nnd, polarisation: metrics.polarisation, splits: metrics.splits, fractions: metrics.fractions });
+    }
     renderer!.render(prev, cur, paused ? 1 : Math.min(1, acc / sim.cfg.dt), paused ? 0 : ft, {
       debugColours,
       links: showLinks,
@@ -207,8 +218,32 @@ export async function start(ui: Ui): Promise<void> {
   requestAnimationFrame(frame);
 }
 
+/** Open or close the tuning panel. Built on first use: it is a few hundred DOM nodes. */
+function toggleTuning(host: HTMLElement, show?: boolean): boolean {
+  const open = show ?? host.hidden;
+  host.hidden = !open;
+  if (open && !panel) {
+    panel = createTuningPanel({
+      container: host,
+      config: tuningConfig,
+      showFlock: false,
+      showSave: false,
+      onSim: (_path, _value, rebuild) => {
+        if (rebuild) reset(sim.cfg.count, sim.cfg.seed);
+        else sim.applyConfig(tuningConfig);
+      },
+      onAction: (action) => {
+        if (action === 'reset') sim.applyConfig(tuningConfig);
+        else if (action === 'respawn') reset(sim.cfg.count, (sim.cfg.seed * 7919 + 13) % 100000);
+      },
+    });
+  }
+  return open;
+}
+
 export const controls = {
   reset,
+  toggleTuning,
   setPaused: (v: boolean) => { paused = v; },
   isPaused: () => paused,
   setDebugColours: (v: boolean) => { debugColours = v; },

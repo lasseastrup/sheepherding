@@ -27,6 +27,12 @@ artifact. The exe is unsigned, so Windows SmartScreen will warn on first launch.
 
 Nothing is drawn for the dog: the mouse pointer itself is the threat the sheep keep away from.
 
+A tuning window exposes every behavioural parameter live, with a filter box, per-row reset and a
+button that copies just what you changed as JSON. Open it from the tray or with Ctrl+Shift+T in
+the desktop app, and with the button or the d key on the web page. Values are derived from the
+config defaults in `src/sim/schema.ts`, so a new field appears in the panel without registering it
+anywhere; changes apply to the running flock unless they are structural, which respawn it.
+
 Overlay controls: the tray icon has hide, pause, flock size, sheep size, display, new flock and
 quit; Ctrl+Shift+S hides and shows the flock. The window is click-through, so everything under
 the sheep keeps working.

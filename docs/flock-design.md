@@ -432,7 +432,24 @@ react to the patch of grass the camera has since panned away from.
 Nothing is drawn for the dog. The player's own cursor is the threat, and on a desktop overlay an
 extra animal under the arrow is redundant; the flock's reaction is what communicates the pressure.
 
-## 13. Performance and the flock ceiling
+## 13. Tuning panel
+
+`src/tuning/panel.ts` is a framework-free panel shared by the desktop app's tuning window and the
+web page. It builds itself from `src/sim/schema.ts`, which walks the config defaults and derives a
+range for every numeric field, so a new parameter appears in the panel without being registered
+anywhere. About thirty parameters carry an explicit range, label and note where the derived guess
+would be poor or the meaning is not obvious.
+
+Changes apply to the running flock through `Sim.applyConfig`, which pins the seed, count and world
+so behaviour can be tuned without disturbing the flock. Parameters the running simulation cannot
+pick up (the neighbour count and grid cell, the personality spread, the step size, spawn spacing)
+are marked in the schema and respawn the flock instead; the panel labels them.
+
+"Copy changes" puts only the difference from the defaults on the clipboard, as a patch that can be
+pasted straight into `defaultConfig()`. In the desktop app the same difference is persisted to the
+settings file, so a tuned flock survives a restart.
+
+## 14. Performance and the flock ceiling
 
 The maximum flock is 500. Getting there took one behavioural fix and several engineering ones,
 all measured with `npm run bench` (software WebGL, so the absolute figures are pessimistic; the

@@ -7,7 +7,8 @@ import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, powerMo
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fullscreenAppRunning } from './fullscreen';
-import { CHANNELS, type OverlayConfig, type PointerMsg, type ReadyMsg } from './ipc';
+import { setPath, tuningSchema } from '../src/sim/schema';
+import { CHANNELS, type OverlayConfig, type OverlayMetrics, type PointerMsg, type ReadyMsg } from './ipc';
 import { loadSettings, saveSettings, type Settings } from './settings';
 
 const SMOKE = process.argv.includes('--smoke');
@@ -17,6 +18,7 @@ const smokeOut = (() => {
 })();
 
 let win: BrowserWindow | null = null;
+let tuningWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let settings: Settings;
 let hiddenReason: 'fullscreen' | 'locked' | 'user' | null = null;
@@ -72,9 +74,43 @@ function createOverlay(): void {
   win.on('closed', () => { win = null; });
 }
 
-function pushConfig(): void {
-  win?.webContents.send(CHANNELS.config, overlayConfig());
+function pushConfig(rebuild = false): void {
+  win?.webContents.send(CHANNELS.config, overlayConfig(), rebuild);
+  tuningWin?.webContents.send(CHANNELS.tuningState, overlayConfig());
 }
+
+/** The tuning window: an ordinary window, unlike the overlay, so it can be moved and focused. */
+function openTuning(): void {
+  if (tuningWin && !tuningWin.isDestroyed()) {
+    tuningWin.show();
+    tuningWin.focus();
+    return;
+  }
+  tuningWin = new BrowserWindow({
+    width: 470,
+    height: 860,
+    title: 'Flock tuning',
+    backgroundColor: '#14180f',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+    },
+  });
+  tuningWin.setMenu(null);
+  void tuningWin.loadFile(join(__dirname, 'tuning.html'));
+  tuningWin.webContents.on('did-finish-load', () => {
+    tuningWin?.webContents.send(CHANNELS.tuningState, overlayConfig());
+  });
+  tuningWin.on('closed', () => { tuningWin = null; });
+}
+
+/** Which config paths cannot be applied to a running flock. Kept in step with the schema. */
+const REBUILD_PATHS = new Set(
+  tuningSchema().flatMap((g) => g.params.filter((p) => p.rebuild).map((p) => p.path)),
+);
 
 /** The window is never focused, so it cannot see the mouse: the main process reads the cursor. */
 function startCursorPolling(): void {
@@ -167,6 +203,7 @@ function refreshTray(): void {
         click: () => { settings.displayId = d.id; saveSettings(settings); win?.close(); createOverlay(); refreshTray(); },
       })),
     },
+    { label: 'Tuning window…', accelerator: 'CommandOrControl+Shift+T', click: () => openTuning() },
     { label: 'New flock', click: () => { settings.seed = (settings.seed * 7919 + 13) % 100000; saveSettings(settings); pushConfig(); } },
     { label: 'Colour sheep by behaviour', type: 'checkbox', checked: settings.debugColours,
       click: (item) => { settings.debugColours = item.checked; saveSettings(settings); pushConfig(); } },
@@ -210,6 +247,39 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on(CHANNELS.hover, () => {
       // reserved for selective interaction: setIgnoreMouseEvents(false) while over a sheep
     });
+    ipcMain.on(CHANNELS.metrics, (_e, m: OverlayMetrics) => {
+      tuningWin?.webContents.send(CHANNELS.tuningMetrics, m);
+    });
+    ipcMain.on(CHANNELS.tuningSim, (_e, path: string, value: unknown, rebuild: boolean) => {
+      setPath(settings.sim as object, path, value);
+      saveSettings(settings);
+      pushConfig(rebuild || REBUILD_PATHS.has(path));
+    });
+    ipcMain.on(CHANNELS.tuningFlock, (_e, key: string, value: number | boolean) => {
+      if (key === 'count') settings.count = Math.max(1, Math.min(500, Math.round(value as number)));
+      else if (key === 'pxPerBL') settings.pxPerBL = Math.max(8, Math.min(160, Math.round(value as number)));
+      else if (key === 'paused') settings.paused = Boolean(value);
+      else if (key === 'debugColours') settings.debugColours = Boolean(value);
+      else if (key === 'links') settings.links = Boolean(value);
+      else return;
+      saveSettings(settings);
+      pushConfig();
+      refreshTray();
+    });
+    ipcMain.on(CHANNELS.tuningAction, (_e, name: string) => {
+      if (name === 'reset') {
+        settings.sim = {};
+        saveSettings(settings);
+        pushConfig(true);
+      } else if (name === 'respawn') {
+        settings.seed = (settings.seed * 7919 + 13) % 100000;
+        saveSettings(settings);
+        pushConfig(true);
+      } else if (name === 'save') {
+        // the tuning window edits settings.sim directly, so saving is just persisting them
+        saveSettings(settings);
+      }
+    });
 
     createOverlay();
     if (!SMOKE) createTray();
@@ -218,6 +288,7 @@ if (!app.requestSingleInstanceLock()) {
     watchDisplays();
 
     globalShortcut.register('CommandOrControl+Shift+S', () => setHidden(hiddenReason === 'user' ? null : 'user'));
+    globalShortcut.register('CommandOrControl+Shift+T', () => openTuning());
 
     powerMonitor.on('lock-screen', () => { if (hiddenReason === null) setHidden('locked'); });
     powerMonitor.on('unlock-screen', () => { if (hiddenReason === 'locked') setHidden(null); });

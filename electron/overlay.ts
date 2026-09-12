@@ -4,7 +4,7 @@
  * window never receives mouse events).
  */
 import { SheepRenderer } from '../src/render3d/sheepRenderer';
-import { Sim, SheepState } from '../src/sim';
+import { mergeConfig, Sim, SheepState, defaultConfig } from '../src/sim';
 import { SHEEP_GLB_BASE64 } from '../web/generated/sheep-glb';
 import { DEFAULT_CONFIG, MAX_SHEEP, type OverlayBridge, type OverlayConfig } from './ipc';
 
@@ -26,6 +26,8 @@ let acc = 0;
 let last = performance.now();
 let pointer: { x: number; y: number } | null = null;
 let renderAcc = 0;
+let fps = 0;
+let lastMetrics = 0;
 
 function decodeBase64(b64: string): ArrayBuffer {
   const bin = atob(b64);
@@ -39,7 +41,8 @@ function world(): { width: number; height: number } {
 }
 
 function buildSim(): void {
-  sim = new Sim({ count: Math.min(config.count, MAX_SHEEP), seed: config.seed, world: world() });
+  const base = mergeConfig(defaultConfig(), config.sim);
+  sim = new Sim({ ...base, count: Math.min(config.count, MAX_SHEEP), seed: config.seed, world: world() });
   sim.run(20);
   prev = sim.writeSnapshot();
   cur = sim.writeSnapshot();
@@ -73,10 +76,13 @@ async function main(): Promise<void> {
   bridge?.onPointer((p) => {
     pointer = p.active ? renderer!.screenToWorld(p.x, p.y, innerWidth, innerHeight) : null;
   });
-  bridge?.onConfig((c) => {
-    const rebuild = c.count !== config.count || c.pxPerBL !== config.pxPerBL || c.seed !== config.seed;
+  bridge?.onConfig((c, forceRebuild) => {
+    const rebuild = forceRebuild || c.count !== config.count || c.pxPerBL !== config.pxPerBL || c.seed !== config.seed;
     const recam = c.tiltDeg !== config.tiltDeg || c.pxPerBL !== config.pxPerBL;
+    const simChanged = JSON.stringify(c.sim) !== JSON.stringify(config.sim);
     config = { ...c };
+    // behaviour changes apply to the running flock; only structural ones need a respawn
+    if (simChanged && !rebuild) sim.applyConfig(mergeConfig(defaultConfig(), config.sim));
     if (recam) {
       buildRenderer();
       void renderer!.load(glb).then(() => {
@@ -122,12 +128,25 @@ async function main(): Promise<void> {
     const idle = !pointer && m.movingFraction === 0 && m.fractions[SheepState.Graze] > 0.95;
     renderAcc += ft;
     const interval = idle ? 0.1 : 1 / 30;
-    if (renderAcc < interval) return;
+    if (renderAcc < interval) {
+      if (now - lastMetrics > 250) {
+        lastMetrics = now;
+        bridge?.metrics({ fps, cohesion: m.cohesion, nnd: m.nnd, polarisation: m.polarisation, splits: m.splits, fractions: m.fractions });
+      }
+      return;
+    }
     renderAcc = 0;
     renderer!.render(prev, cur, Math.min(1, acc / dt), ft, {
       debugColours: config.debugColours,
-      links: false,
+      links: config.links,
     });
+
+    // feed the tuning window
+    fps += (1 / Math.max(1e-3, ft) - fps) * 0.1;
+    if (now - lastMetrics > 250) {
+      lastMetrics = now;
+      bridge?.metrics({ fps, cohesion: m.cohesion, nnd: m.nnd, polarisation: m.polarisation, splits: m.splits, fractions: m.fractions });
+    }
   };
   requestAnimationFrame(frame);
 

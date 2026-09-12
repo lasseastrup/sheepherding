@@ -208,12 +208,23 @@
   .note p + p { margin-top: 7px; }
   .term { font-family: var(--font-mono); font-size: 0.88em; color: var(--ink); }
 
+  #tuning {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(440px, 100vw);
+    height: 100vh;
+    z-index: 20;
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
+  }
+  @media (max-width: 700px) { #tuning { width: 100vw; } }
   hr { border: 0; border-top: 1px solid var(--rule); margin: 0; }
   footer { color: var(--ink-faint); font-size: 13px; max-width: 74ch; }
   footer a { color: var(--ink-soft); }
   @media (prefers-reduced-motion: reduce) { .census span { transition: none; } }
 </style>
 
+<div id="tuning" hidden></div>
 <div class="wrap">
   <header>
     <div class="eyebrow">Flock simulation &middot; milestone 3</div>
@@ -277,6 +288,9 @@
             <label class="check"><input type="checkbox" id="colours"> Colour sheep by behaviour</label>
             <label class="check"><input type="checkbox" id="links"> Show who is following whom</label>
           </div>
+          <div class="buttons">
+            <button type="button" id="tuning-toggle">Tuning panel</button>
+          </div>
         </div>
       </section>
     </div>
@@ -325,6 +339,9 @@
 
   <footer>
     <p style="margin:0">
+      The tuning panel, on the button or the d key, exposes every behavioural parameter live:
+      flight zones, fear thresholds, contagion, habituation, cohesion, gaits and the collision
+      solver, with a filter box and a button that copies just what you changed.
       Zoom with the wheel, the slider, or the + and - keys; 0 returns to the whole paddock. Once
       you are in close the camera follows the flock, so a herd being driven stays on screen.
       Flock size runs to 500. Past roughly 150 the sheep stop casting real shadows and start
@@ -392,8 +409,17 @@ __APP__
     pauseBtn.addEventListener('click', togglePause);
     document.getElementById('colours').addEventListener('change', function (e) { c.setDebugColours(e.target.checked); });
     document.getElementById('links').addEventListener('change', function (e) { c.setLinks(e.target.checked); });
+    var tuningHost = document.getElementById('tuning');
+    var tuningBtn = document.getElementById('tuning-toggle');
+    function toggleTuning(show) {
+      var open = c.toggleTuning(tuningHost, show);
+      tuningBtn.textContent = open ? 'Hide tuning' : 'Tuning panel';
+    }
+    tuningBtn.addEventListener('click', function () { toggleTuning(); });
     addEventListener('keydown', function (e) {
-      if (e.key === ' ' && e.target === document.body) { e.preventDefault(); togglePause(); }
+      if (e.target !== document.body) return;
+      if (e.key === ' ') { e.preventDefault(); togglePause(); }
+      else if (e.key === 'd') toggleTuning();
     });
 
     if (window.claude && window.claude.hot) {
