@@ -432,7 +432,49 @@ react to the patch of grass the camera has since panned away from.
 Nothing is drawn for the dog. The player's own cursor is the threat, and on a desktop overlay an
 extra animal under the arrow is redundant; the flock's reaction is what communicates the pressure.
 
-## 13. Tuning panel
+## 13. Why the flock cannot be shed, and what it would take
+
+Cutting a flock in two and keeping it apart does not work, and it is not a tuning problem. Seven
+candidate parameters were swept across five seeds against a scripted shed (charge through the
+middle, then hold the gap). None produced a lasting split. Two findings came out of the attempt,
+both worth knowing before anyone tries again.
+
+**Two redundant attractors, either of which closes the gap.** `run.cohesionCentreMix` blends the
+whole flock's centre into a running sheep's target, and during a shed that centre is exactly where
+the threat stands, so both halves are drawn back through it. Separately the rejoin steering also
+aims at the whole flock's centre, weighted by the share of the flock a sheep is cut off from,
+which at an even split is 0.5 for everybody. Disable one and the other still closes the gap, which
+is why single-parameter sweeps look flat.
+
+**The threat is a point of fear, not a barrier.** Measured over a nineteen-second hold with the
+pointer parked between two halves: forty-seven crossings of the dividing line, with the nearest
+sheep staying six to eight body lengths away. The sheep are not pushing past the pointer, they are
+strolling around it, because nothing in the steering treats it as an obstacle. Danger falls off
+with pressure, so once fear decays the way is simply open. A flock thirteen body lengths across
+walks around a point every time.
+
+A serious attempt was made at the obvious fix, which is to make cohesion target the sheep's own
+connected sub-group rather than the whole flock, plus a geometric test for the threat standing in
+the way. It was reverted, for two reasons worth recording:
+
+1. **The group link distance was load-bearing while broken.** Groups were built from the contact
+   lists, which only reach about 1.9 BL, so `group.linkDist: 6` was silently ignored and an
+   ordinary grazing flock already counted as six groups. Every sheep therefore carried a large
+   permanent "cut off from the flock" value, and the constant pull that produced was a good part
+   of what made the flock cohere and drive well. Fixing the grouping removes that pull, and the
+   flock has to be re-tuned around its absence: with the naive fix in place a gentle drive moved
+   the flock 1.3 BL instead of 8.
+2. **Group-local cohesion breaks the packing response**, which is the best-validated behaviour in
+   the model (King et al. 2012). A flock that fragments momentarily under a charge then packs into
+   two separate balls rather than one, and mean distance to the centroid stops collapsing.
+
+What a real attempt needs, in order: fix the grouping and re-tune cohesion around it as a single
+piece of work; make the threat an obstacle in the steering, with a danger footprint that persists
+independently of fear, so a sheep paths around it rather than through where it stands; and only
+then add the geometric "the dog is between me and the rest" rule, which is cheap and correct but
+does nothing while the other two are missing.
+
+## 14. Tuning panel
 
 `src/tuning/panel.ts` is a framework-free panel shared by the desktop app's tuning window and the
 web page. It builds itself from `src/sim/schema.ts`, which walks the config defaults and derives a
@@ -449,7 +491,7 @@ are marked in the schema and respawn the flock instead; the panel labels them.
 pasted straight into `defaultConfig()`. In the desktop app the same difference is persisted to the
 settings file, so a tuned flock survives a restart.
 
-## 14. Performance and the flock ceiling
+## 15. Performance and the flock ceiling
 
 The maximum flock is 500. Getting there took one behavioural fix and several engineering ones,
 all measured with `npm run bench` (software WebGL, so the absolute figures are pessimistic; the
