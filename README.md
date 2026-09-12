@@ -12,13 +12,14 @@ Try the flock in a browser: https://claude.ai/code/artifact/9e022eef-9750-47ae-b
 
 ```
 npm install                 # set ELECTRON_SKIP_BINARY_DOWNLOAD=1 if you only want the simulation
-npm test                    # 18 simulation tests: determinism, non-overlap, 9 behaviour scenarios
+npm test                    # 27 simulation tests: determinism, non-overlap, 11 behaviour scenarios
 npm run dev                 # 2D debug view of the simulation at http://127.0.0.1:5173
 npm run build:page          # rebuilds web/sheepdog-trial.html, the playable 3D page
 npm run electron            # the desktop overlay (Windows is the target; needs a display)
 npm run dist:win            # unsigned portable exe in release/
 npm run assets:sheep        # regenerate assets/sheep.glb (needs `pip install bpy==4.2.*`)
 npm run bench               # headless render benchmark (--calm, --offscreen, or a size list)
+npm run behaviour           # every flock property in one pass (--seeds, --patch '{...}', --json)
 ```
 
 Every push runs the tests on Ubuntu and, on a Windows runner, builds the overlay, launches it in

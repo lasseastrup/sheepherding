@@ -206,12 +206,17 @@ neighbours only for 3 s. Sub-groups form naturally. A tail-end sheep with the po
 1.5 BL and the flock ahead blocked (danger ahead > 0.7) gets interest in the slots past the
 pointer: it breaks back. Both are the cost of pushing too hard.
 
-**Sub-groups and unease.** Connected components of the flock are found each step by union-find
-over pairs within 6 BL. A sheep's `unease` is the fraction of the flock it is cut off from. Unease
-is deliberately **not** fear: it makes a sheep want to rejoin, never to freeze. It adds an interest
-lobe toward the flock's centre in GRAZE, WALK and RUN, and a sheep that is both a minority
-fragment, in a group under 4, and more than 8 BL from the flock's centre must leave GRAZE or ALERT
-and walk back.
+**Sub-groups and homesickness.** Connected components of the flock are found each step by
+union-find over pairs within `group.linkDist` (6 BL), searched over the uniform grid — searching
+the contact lists instead silently caps the link distance at about 1.9 BL, which was a real bug for
+a while and an instructive one (§13). Each group publishes its own centre and a centre of
+everyone-but-itself. Cohesion pulls toward the first; homesickness toward the second, and only when
+a group is too small to be a flock in its own right (`group.shedTolerance`, absolute size, raised
+to a quarter of the count for large flocks). Homesickness is deliberately **not** fear: it makes a
+sheep want to rejoin, never to freeze. It adds an interest lobe in GRAZE, WALK and RUN, and a sheep
+in a group under half the tolerance and more than 8 BL from the others must leave GRAZE or ALERT
+and walk back. A weak long-range `driftTogether` on top of it reunites a divided flock over
+minutes, so accidental splits heal while deliberate ones survive being worked with (§13).
 
 **Isolation.** A sheep with no visible neighbour within 8 BL sets `lonely = 1`: bleat (with
 cooldown), fear floor 0.3, cohesion gain ×2, GRAZE forbidden. It runs to the flock even past the
@@ -374,8 +379,22 @@ Scenarios and expected ranges (derived from the field data, compressed to sim sc
    pointer was; overlap = 0 and jitter ≈ 0 while settled.
 9. **Lone sheep placed 15 BL away**: bleats, reaches the flock within 12 s, even when the pointer
    sits between them at 5 BL.
+10. **A shed**: flick the pointer into the middle of 24 sheep and hold the gap for 25 s; the flock
+    ends in two groups, the smaller of them a real group of 4+.
+11. **A shed driven off**: as above, then walk one half away and leave the flock entirely alone for
+    15 s; the two groups are still two groups.
 
 Every scenario also has a Playwright screenshot sequence for visual review from Claude Code.
+
+**The behaviour harness.** `npm run behaviour` runs every one of these properties in a single pass
+and prints them together, with the wanted range beside each. Behaviour work on the flock is
+entangled — a change that helps shedding quietly destroys driving — and a single failing assertion
+says nothing about which. Options: `--seeds 1,2,3`, `--patch '{"run":{"cohesion":0.8}}'` to try a
+config change without editing anything, `--json`. Sweep a parameter with a shell loop over
+`--patch` before touching a default. Two warnings, both learned the hard way in §13: a probe that
+never applies pressure will happily report numbers for forty-five seconds, so instrument before
+tuning; and `drive`'s displacement swings between 5 and 15 BL across neighbouring parameter values,
+so do not chase it.
 
 ## 11. What changed during implementation
 
@@ -432,47 +451,99 @@ react to the patch of grass the camera has since panned away from.
 Nothing is drawn for the dog. The player's own cursor is the threat, and on a desktop overlay an
 extra animal under the arrow is redundant; the flock's reaction is what communicates the pressure.
 
-## 13. Why the flock cannot be shed, and what it would take
+## 13. Shedding
 
-Cutting a flock in two and keeping it apart does not work, and it is not a tuning problem. Seven
-candidate parameters were swept across five seeds against a scripted shed (charge through the
-middle, then hold the gap). None produced a lasting split. Two findings came out of the attempt,
-both worth knowing before anyone tries again.
+Cutting a flock in two and keeping it apart is the hardest thing the model does, and it took three
+attempts. It works now: sixteen of sixteen seeds cut cleanly and stay cut after one half is walked
+off and the pointer leaves (`tools/behaviour.mjs`, probes `shed` and `shedDrive`; scenarios 10 and
+11). What follows is why the first two attempts failed, because most of it was measurement error
+rather than behaviour, and the same traps are easy to walk back into.
 
-**Two redundant attractors, either of which closes the gap.** `run.cohesionCentreMix` blends the
-whole flock's centre into a running sheep's target, and during a shed that centre is exactly where
-the threat stands, so both halves are drawn back through it. Separately the rejoin steering also
-aims at the whole flock's centre, weighted by the share of the flock a sheep is cut off from,
-which at an even split is 0.5 for everybody. Disable one and the other still closes the gap, which
-is why single-parameter sweeps look flat.
+### What was actually wrong
 
-**The threat is a point of fear, not a barrier.** Measured over a nineteen-second hold with the
-pointer parked between two halves: forty-seven crossings of the dividing line, with the nearest
-sheep staying six to eight body lengths away. The sheep are not pushing past the pointer, they are
-strolling around it, because nothing in the steering treats it as an obstacle. Danger falls off
-with pressure, so once fear decays the way is simply open. A flock thirteen body lengths across
-walks around a point every time.
+**Cohesion aimed at the middle of everything.** Three separate forces pulled a sheep toward the
+whole flock's centre: the rejoin steering, the steady flock pull, and `run.cohesionCentroidMix`,
+which blends the global centroid into a running sheep's target. During a shed that centre sits
+exactly where the pointer is standing, so all three drew both halves back through it. Disable one
+and the others still close the gap, which is why single-parameter sweeps looked flat. The fix is
+one idea applied in three places: **cohesion reaches only as far as the group a sheep is actually
+in**. `Groups` now publishes a per-group centre (`groupX/groupY`) for cohesion and a centre of
+everyone-but-my-group (`restX/restY`) for homesickness. While the flock is whole the two are the
+same point and nothing changes; once it is cut they are not.
 
-A serious attempt was made at the obvious fix, which is to make cohesion target the sheep's own
-connected sub-group rather than the whole flock, plus a geometric test for the threat standing in
-the way. It was reverted, for two reasons worth recording:
+**Half a flock is a flock.** Homesickness is gated on absolute group size (`group.shedTolerance`,
+raised to a quarter of the count for big flocks), not on the share of the flock a sheep can see. A
+pair is frightened wherever it is; ten sheep out of twenty are not pining for the other ten. A
+single separated sheep still crosses the paddock to rejoin, past the pointer if need be — scenario
+9 asserts exactly that, and it is the reason the gate is size and not distance.
 
-1. **The group link distance was load-bearing while broken.** Groups were built from the contact
-   lists, which only reach about 1.9 BL, so `group.linkDist: 6` was silently ignored and an
-   ordinary grazing flock already counted as six groups. Every sheep therefore carried a large
-   permanent "cut off from the flock" value, and the constant pull that produced was a good part
-   of what made the flock cohere and drive well. Fixing the grouping removes that pull, and the
-   flock has to be re-tuned around its absence: with the naive fix in place a gentle drive moved
-   the flock 1.3 BL instead of 8.
-2. **Group-local cohesion breaks the packing response**, which is the best-validated behaviour in
-   the model (King et al. 2012). A flock that fragments momentarily under a charge then packs into
-   two separate balls rather than one, and mean distance to the centroid stops collapsing.
+**The probes were measuring nothing.** Two of them, both discovered by instrumenting rather than
+tuning:
 
-What a real attempt needs, in order: fix the grouping and re-tune cohesion around it as a single
-piece of work; make the threat an obstacle in the steering, with a danger footprint that persists
-independently of fear, so a sheep paths around it rather than through where it stands; and only
-then add the geometric "the dog is between me and the rest" rule, which is cheap and correct but
-does nothing while the other two are missing.
+- The shed probe approached at 4 BL/s. `run.speed` is 3.5, so the pointer never caught the flock —
+  it herded them across the paddock for five seconds and then "held the gap" behind their backs.
+  Every sheep was on the same side for the entire measurement. Approaching more slowly does not
+  help and is not more realistic: a flock backs away from anything walking at it, however gently,
+  so there is no approach speed that gets you inside from outside. A player gets in with a flick of
+  the mouse, which is faster than a sheep, and that is what the probe does now. After the cut the
+  pointer holds *the gap* — the midpoint of the two halves — which is where a handler stands.
+- The drive probe held station three quarters of a flight zone behind the rearmost sheep. A pointer
+  matching a stalled flock is a *stationary* threat, and a stationary threat carries only
+  `zoneIdle` (3 BL), so the pressure was exactly zero — for forty-five seconds, on the seeds where
+  the flock happened not to move on its own. Flock frozen, pointer frozen, nothing measured. The
+  seeds that "drove well" were the ones that spontaneously stampeded. It now walks steadily
+  forward, which regulates itself: dawdle and it closes on you, run and it falls behind. That a
+  flock ignores a dog standing still 6 BL away is correct, and worth keeping in mind when the
+  pointer is parked.
+
+The drive probe also ran in the standard 40 BL paddock, where the flock hits the east fence a third
+of the way through and spends the rest of the run pinned against it, which reads as a stampede
+however gently it was pushed. It uses a 110 BL paddock now.
+
+### The three forces, and what each is for
+
+| force | target | when |
+| --- | --- | --- |
+| `group.flockPull` | centre of my own group | always, as a spring with slack |
+| `group.rejoinWeight` | centre of everyone else | only when my group is too small to be a flock |
+| `group.driftTogether` | centre of everyone else | always, weakly, while nothing is blocking the way |
+
+The spring has slack because a flat pull strong enough to drive a flock with holds a calm one in a
+huddle: it fades below `flockSpread * sqrt(groupSize)` and is scaled by fear, so sheep spread out
+to graze and bunch when worried. That is the selfish-herd response arriving for free, and it is
+what keeps the grazing flock's cohesion radius in the range scenario 1 asks for.
+
+`driftTogether` is the answer to the flip side of shedding: if a cut holds, so does an accidental
+one, and a flock barged through once an hour would end the day as clumps in the corners. It is a
+deliberately feeble long-range pull, and its weakness is the mechanism, not a compromise — it only
+wins in the middle of a group, where the spring above has gone slack, so a whole clump eases over
+instead of shedding its own edge sheep. A shed therefore survives the seconds it takes to work
+with, and heals if the flock is left in peace for a minute or two.
+
+### The geometric blocking rule
+
+A sheep with the threat between it and the others gives up on rejoining: a corridor test
+(`flee.blockedAngleDeg`, `flee.blockedReach`) against `restX/restY`, which suppresses both
+homesickness and the drift, and zeroes `run.cohesionCentroidMix`. It is cheap and it is correct,
+but on its own it does almost nothing — disabling it entirely still leaves the shed probes passing.
+It earns its place by holding the halves apart while the pointer is in the gap, which is when the
+player is doing the work.
+
+Two things that turned out not to matter, kept because they are right rather than because they
+measure: the threat's obstacle footprint (`flee.obstacleRadius`, `flee.obstacleWeight`), which
+makes a sheep path around where the pointer stands whatever it is feeling — setting its weight to
+zero changes no probe; and the blocking rule above. Both address the earlier finding that the
+pointer is a point of fear rather than a barrier, measured at forty-seven crossings of the dividing
+line in a nineteen-second hold. That finding was real, but it was not what made shedding fail.
+
+### The cost
+
+`recover` — barge through the middle, then leave — is the one property that got worse: the flock
+comes back to one group 85% of the time instead of always, and the seeds that fail end with the
+halves twenty-plus body lengths apart, which is to say the barge shed them by accident. That is the
+honest price of a cut that holds, and `driftTogether` buys most of it back. Everything else is at
+or better than it was: driving is unchanged (50.6 BL in 45 s against 50.6), the grazing flock is
+slightly looser and closer to the mark, and a circling pointer alarms it less.
 
 ## 14. Tuning panel
 

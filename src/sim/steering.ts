@@ -7,6 +7,11 @@ import { SheepState } from './types';
 
 const DEG = Math.PI / 180;
 
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 function wrapAngle(a: number): number {
   a = a % (Math.PI * 2);
   if (a > Math.PI) a -= Math.PI * 2;
@@ -101,14 +106,9 @@ export class Steering {
     const FL = cfg.flee;
     const G = cfg.group;
     const balanceCos = Math.cos(FL.balanceAngleDeg * DEG);
+    const blockedCos = Math.cos(FL.blockedAngleDeg * DEG);
     const tx = threat.x + threat.vx * cfg.pressure.lookahead;
     const ty = threat.y + threat.vy * cfg.pressure.lookahead;
-
-    // global centroid for the run state
-    let gx = 0;
-    let gy = 0;
-    for (let i = 0; i < n; i++) { gx += flock.px[i]; gy += flock.py[i]; }
-    gx /= Math.max(1, n); gy /= Math.max(1, n);
 
     for (let i = 0; i < n; i++) {
       const base = i * N;
@@ -118,6 +118,25 @@ export class Steering {
       flock.intent[i] = 0;
       const x = flock.px[i];
       const y = flock.py[i];
+
+      // Is the threat standing between me and the rest of the flock? A sheep will not cross a dog
+      // to rejoin, and suppressing the pull toward the others in exactly that case is what lets a
+      // deliberate cut stay cut. Everywhere else the flock coheres as before, so a plain charge
+      // still packs it tight. Awareness, not proximity: a sheep at the back of its half knows
+      // perfectly well where the dog is.
+      let blocked = false;
+      if (threat.active && flock.fear[i] > 0.02) {
+        const fx0 = groups.restX[i] - x;
+        const fy0 = groups.restY[i] - y;
+        const fd = Math.hypot(fx0, fy0);
+        const tx0 = tx - x;
+        const ty0 = ty - y;
+        const td = Math.hypot(tx0, ty0);
+        if (fd > 1e-3 && td > 1e-3 && td < fd * FL.blockedReach) {
+          blocked = (fx0 * tx0 + fy0 * ty0) / (fd * td) > blockedCos;
+        }
+      }
+      flock.blocked[i] = blocked ? 1 : 0;
       let desiredSpeed = 0;
       let turnRate = K.turnRateDeg.graze * DEG;
 
@@ -132,7 +151,7 @@ export class Steering {
               const d = Math.hypot(dx, dy);
               if (d > 1e-3) this.lobe(interest, base, dx / d, dy / d, cfg.graze.rejoinWeight * flock.gregarious[i]);
             }
-            this.rejoinLobe(flock, groups, i, base, gx, gy, x, y, G.rejoinWeight);
+            this.rejoinLobe(flock, groups, i, base, x, y, blocked ? -1 : G.rejoinWeight);
             // spread out: crowding is danger
             const cb = i * MAX_CONTACTS;
             for (let q = 0; q < flock.contactCount[i]; q++) {
@@ -155,7 +174,7 @@ export class Steering {
           let fy = 0;
           if (threat.active && flock.pressure[i] > 0.02) { fx = tx - x; fy = ty - y; }
           else if (remembered) { fx = lastThreatX - x; fy = lastThreatY - y; }
-          else if (groups.unease[i] > 0.2) { fx = gx - x; fy = gy - y; }
+          else if (groups.seekRest[i] > 0.2) { fx = groups.restX[i] - x; fy = groups.restY[i] - y; }
           const fl = Math.hypot(fx, fy);
           if (fl > 1e-3) {
             flock.intent[i] = 1; // deliberate turn, not jitter
@@ -198,7 +217,7 @@ export class Steering {
             const dy = flock.lcmY[i] - y;
             const d = Math.hypot(dx, dy);
             if (d > 2) this.lobe(interest, base, dx / d, dy / d, cfg.walk.cohesionWeight * flock.gregarious[i]);
-            this.rejoinLobe(flock, groups, i, base, gx, gy, x, y, G.rejoinWeight);
+            this.rejoinLobe(flock, groups, i, base, x, y, blocked ? -1 : G.rejoinWeight);
             desiredSpeed = walkSpeed;
           }
           this.neighbourDanger(flock, i, base, cfg.steering.neighbourDangerDist, cfg.steering.neighbourDangerWeight);
@@ -207,13 +226,15 @@ export class Steering {
         case SheepState.Run: {
           turnRate = K.turnRateDeg.run * DEG;
           const R = cfg.run;
-          // cohesion: local centre of mass mixed with the global centroid.
+          // Cohesion: local centre of mass mixed with the centre of my own group — not of the
+          // whole flock. A running sheep steering half-way toward the middle of everything walks
+          // straight through a cut, which is how a shed healed itself the moment the dog left.
           // Pressed from inside the flock, a sheep abandons the far side of the group and
           // sticks to its closest few neighbours: this is what splits the flock.
           let mix = R.cohesionCentroidMix;
-          if (flock.splitUntil[i] > 0) mix = 0;
-          let cxm = flock.lcmX[i] * (1 - mix) + gx * mix;
-          let cym = flock.lcmY[i] * (1 - mix) + gy * mix;
+          if (flock.splitUntil[i] > 0 || blocked) mix = 0;
+          let cxm = flock.lcmX[i] * (1 - mix) + groups.groupX[i] * mix;
+          let cym = flock.lcmY[i] * (1 - mix) + groups.groupY[i] * mix;
           if (flock.splitUntil[i] > 0) {
             let sx = 0;
             let sy = 0;
@@ -258,11 +279,11 @@ export class Steering {
           }
           const al = Math.hypot(ax, ay);
           if (al > 1e-6) { vx += (ax / al) * R.align; vy += (ay / al) * R.align; }
-          // a stray or a fragment heads back to the main body
-          const un = groups.unease[i];
+          // a stray, or a group too small to stand alone, heads back to the rest
+          const un = blocked ? 0 : groups.seekRest[i];
           if (un > 0.05) {
-            const rx2 = gx - x;
-            const ry2 = gy - y;
+            const rx2 = groups.restX[i] - x;
+            const ry2 = groups.restY[i] - y;
             const rl2 = Math.hypot(rx2, ry2);
             if (rl2 > 1e-3) {
               const w = G.rejoinRunWeight * un;
@@ -297,7 +318,7 @@ export class Steering {
       }
 
       // the threat itself: danger toward it, interest away from it bent toward the flock
-      if (threat.active && flock.pressure[i] > 0.01 && desiredSpeed > 0) {
+      if (threat.active && desiredSpeed > 0) {
         const dx = tx - x;
         const dy = ty - y;
         const d = Math.hypot(dx, dy);
@@ -306,37 +327,44 @@ export class Steering {
           const uy = dy / d;
           const p = flock.pressure[i];
           const dangerScale = flock.lonely[i] ? FL.lonelyDangerScale : 1;
-          this.lobe(danger, base, ux, uy, FL.dangerWeight * p * dangerScale);
-          // flee direction: away, bent toward the local centre of mass
-          let ax = -ux;
-          let ay = -uy;
-          const cx2 = flock.lcmX[i] - x;
-          const cy2 = flock.lcmY[i] - y;
-          const cl = Math.hypot(cx2, cy2);
-          if (cl > 1e-3) {
-            // Selfish herd: run to the middle first. Once there is no middle left to run to,
-            // the bend has to fade or the packed flock mills on the spot instead of leaving.
-            const packed = Math.min(1, cl / FL.centroidBendPacked);
-            const lam = FL.centroidBend * (1 + flock.fear[i]) * packed;
-            ax += (cx2 / cl) * lam;
-            ay += (cy2 / cl) * lam;
+          // Two separate things. Fear makes a sheep want to be elsewhere, and fades as it calms.
+          // Being an obstacle does not: a sheep walks around the dog whatever it is feeling, and
+          // without that the danger lobe evaporates as fear decays and the flock strolls straight
+          // through where the dog is standing.
+          const obstacle = FL.obstacleWeight * smoothstep(FL.obstacleRadius, FL.obstacleRadius * 0.3, d);
+          this.lobe(danger, base, ux, uy, Math.max(FL.dangerWeight * p * dangerScale, obstacle));
+          if (p > 0.01) {
+            // flee direction: away, bent toward the local centre of mass
+            let ax = -ux;
+            let ay = -uy;
+            const cx2 = flock.lcmX[i] - x;
+            const cy2 = flock.lcmY[i] - y;
+            const cl = Math.hypot(cx2, cy2);
+            if (cl > 1e-3) {
+              // Selfish herd: run to the middle first. Once there is no middle left to run to,
+              // the bend has to fade or the packed flock mills on the spot instead of leaving.
+              const packed = Math.min(1, cl / FL.centroidBendPacked);
+              const lam = FL.centroidBend * (1 + flock.fear[i]) * packed;
+              ax += (cx2 / cl) * lam;
+              ay += (cy2 / cl) * lam;
+            }
+            // Only states without their own force sum get a flee lobe. In RUN the escape is already
+            // in the intent vector; adding a second interest lobe there makes the two fight and the
+            // flock mills on the spot instead of leaving.
+            if (st !== SheepState.Run) {
+              const al = Math.hypot(ax, ay);
+              if (al > 1e-3) this.lobe(interest, base, ax / al, ay / al, FL.interestWeight * p);
+            }
+            // point of balance at the shoulder: pressure behind it drives me forward,
+            // pressure ahead of it stops or turns me back
+            const hx2 = Math.cos(flock.heading[i]);
+            const hy2 = Math.sin(flock.heading[i]);
+            const facing = hx2 * ux + hy2 * uy;
+            if (facing < -balanceCos) this.lobe(interest, base, hx2, hy2, FL.balanceInterest * p);
+            else if (facing > balanceCos) this.lobe(danger, base, hx2, hy2, FL.balanceDanger * p);
+            // deep pressure fractures the flock
+            if (p > FL.splitPressure) flock.splitUntil[i] = FL.splitDuration;
           }
-          // Only states without their own force sum get a flee lobe. In RUN the escape is already
-          // in the intent vector; adding a second interest lobe there makes the two fight and the
-          // flock mills on the spot instead of leaving.
-          if (st !== SheepState.Run) {
-            const al = Math.hypot(ax, ay);
-            if (al > 1e-3) this.lobe(interest, base, ax / al, ay / al, FL.interestWeight * p);
-          }
-          // point of balance at the shoulder: pressure behind it drives me forward,
-          // pressure ahead of it stops or turns me back
-          const hx2 = Math.cos(flock.heading[i]);
-          const hy2 = Math.sin(flock.heading[i]);
-          const facing = hx2 * ux + hy2 * uy;
-          if (facing < -balanceCos) this.lobe(interest, base, hx2, hy2, FL.balanceInterest * p);
-          else if (facing > balanceCos) this.lobe(danger, base, hx2, hy2, FL.balanceDanger * p);
-          // deep pressure fractures the flock
-          if (p > FL.splitPressure) flock.splitUntil[i] = FL.splitDuration;
         }
       }
       if (flock.splitUntil[i] > 0) flock.splitUntil[i] = Math.max(0, flock.splitUntil[i] - dt);
@@ -365,25 +393,51 @@ export class Steering {
     }
   }
 
-  /** Pull toward the main body of the flock, in proportion to how small my sub-group is. */
+  /**
+   * Two pulls that look alike and are not. Cohesion holds a sheep near the group it is actually
+   * in, and used to arrive by accident from a grouping bug, so it has to be paid for explicitly
+   * now that groups are measured properly. Homesickness draws a sheep toward the ones it is *not*
+   * with, and only bites when its own group is too small to be a flock. While the flock is whole
+   * the two point the same way. Once it is cut they do not, and aiming cohesion at the midpoint of
+   * both halves — exactly where the dog is standing — is what used to heal every cut in a second.
+   */
   private rejoinLobe(
     flock: Flock,
     groups: Groups,
     i: number,
     base: number,
-    gx: number,
-    gy: number,
     x: number,
     y: number,
     weight: number,
   ): void {
-    const un = groups.unease[i];
-    if (un <= 0.05) return;
-    const dx = gx - x;
-    const dy = gy - y;
-    const d = Math.hypot(dx, dy);
-    if (d < 1e-3) return;
-    this.lobe(flock.interest, base, dx / d, dy / d, weight * un * flock.gregarious[i]);
+    const G = this.cfg.group;
+    const dx = groups.restX[i] - x;
+    const dy = groups.restY[i] - y;
+    const dRest = Math.hypot(dx, dy);
+    // With a whole flock there is no "rest": restX falls back to my own group's centre.
+    const divided = groups.groupSize[i] < flock.count;
+    const gx = groups.groupX[i] - x;
+    const gy = groups.groupY[i] - y;
+    const gd = Math.hypot(gx, gy);
+    // A spring with slack, scaled by fear the way the running cohesion is. Sheep spread out to
+    // graze and bunch when they are worried, and a flat pull strong enough to drive a flock with
+    // holds a calm one in a huddle. The slack radius grows with the square root of the group, so
+    // twenty sheep and five hundred both get room to stand in.
+    const spread = G.flockSpread * Math.sqrt(Math.max(1, groups.groupSize[i]));
+    const pull = G.flockPull * (1 + flock.fear[i]) * Math.min(1, gd / spread);
+    if (gd > 1e-3 && pull > 0.02) this.lobe(flock.interest, base, gx / gd, gy / gd, pull);
+    // Homesickness, which is a different thing: toward the sheep I am *not* with. It has two
+    // parts. A group too small to be a flock goes looking for the others in earnest. On top of
+    // that, any divided flock drifts slowly back together, because sheep can see other sheep
+    // across a paddock and would rather be with them. The drift is deliberately feeble: it wins
+    // only in the middle of a group, where the spring above has gone slack, so a whole clump
+    // eases over instead of shedding its own edge. A shed therefore survives being left alone for
+    // as long as it takes to work with, and heals if the flock is left in peace for minutes.
+    // A negative weight means the way there is blocked.
+    if (weight < 0 || dRest < 1e-3) return;
+    const w = weight * groups.seekRest[i] * flock.gregarious[i] + (divided ? G.driftTogether : 0);
+    if (w <= 0.02) return;
+    this.lobe(flock.interest, base, dx / dRest, dy / dRest, w);
   }
 
   private neighbourDanger(flock: Flock, i: number, base: number, dist: number, weight: number): void {

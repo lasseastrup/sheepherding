@@ -1,6 +1,5 @@
 import type { SimConfig } from './config';
 import { Flock, FEAR_HIST, MAX_NEIGHBOURS } from './flock';
-import type { Groups } from './groups';
 import { SheepState } from './types';
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -29,7 +28,7 @@ export class Perception {
     this.cfg = cfg;
   }
 
-  update(flock: Flock, threat: Threat, dt: number, groups: Groups): void {
+  update(flock: Flock, threat: Threat, dt: number): void {
     const cfg = this.cfg;
     const P = cfg.pressure;
     const n = flock.count;
@@ -119,10 +118,9 @@ export class Perception {
       // lonely sheep are permanently uneasy
       const lonely = flock.nearestDist[i] > cfg.run.isolationDist;
       flock.lonely[i] = lonely ? 1 : 0;
-      // Unease at being in too small a group is NOT fear: it makes a sheep want to rejoin, not
-      // to freeze. Only real isolation raises alarm. Keeping the two separate is what lets a
-      // scattered flock walk back together instead of standing alert forever.
-      void groups;
+      // Wanting to rejoin the flock is NOT fear: it makes a sheep walk, not freeze. Only real
+      // isolation raises alarm. Keeping the two separate is what lets a scattered flock walk
+      // back together instead of standing alert forever.
       const floor = lonely ? P.lonelyFear : 0;
 
       const prev = flock.fear[i];

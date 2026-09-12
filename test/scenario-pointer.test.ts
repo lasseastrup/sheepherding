@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SheepState, Sim } from '../src/sim';
-import { centroid, drive, flockRadius, meanFear, nearestSheep, settled } from './helpers';
+import { centreOf, centroid, drive, flockRadius, gapPoint, groupsOf, mean, meanFear, nearestSheep, settled } from './helpers';
 
 /** Scenarios 3-9 of docs/flock-design.md §10: the flock's response to the pointer. */
 describe('scenario 3: straight fast approach', () => {
@@ -57,29 +57,29 @@ describe('scenario 4: wide slow circle', () => {
 
 describe('scenario 5: gentle drive from behind', () => {
   it('walks the flock across the paddock', () => {
-    const sim = settled({ seed: 3, count: 20 });
+    // A paddock long enough to drive across. In the default 40 BL world the flock reaches the
+    // fence a third of the way in and spends the rest of the run pinned against it.
+    const sim = settled({ seed: 3, count: 20, world: { width: 110, height: 22 } });
     const c = centroid(sim);
     const t0 = sim.time;
     const driveSpeed = 1.2;
-    // stay behind the flock, pushing east
-    const standoff = sim.cfg.pressure.zoneDog * 0.75;
+    // A handler walking the flock forward keeps walking whether or not the flock does. Holding
+    // station a fixed distance behind the rearmost sheep does not work and is not what a handler
+    // does: matching a stalled flock makes the pointer a *stationary* threat, and a stationary
+    // threat carries only zoneIdle, so the pressure is exactly zero and neither ever moves again.
+    // A steady walk regulates itself. Dawdle and it closes on you; run and it falls behind.
     const rows = drive(sim, 45, (t) => {
-      // hold station just inside the flight zone of the rearmost sheep and walk it forward
-      let rear = Infinity;
       let cy = 0;
-      for (let i = 0; i < sim.flock.count; i++) {
-        rear = Math.min(rear, sim.flock.px[i]);
-        cy += sim.flock.py[i];
-      }
-      cy /= sim.flock.count;
-      const advance = c.x - 10 + driveSpeed * (t - t0);
-      return { x: Math.min(rear - standoff, advance), y: cy };
+      for (let i = 0; i < sim.flock.count; i++) cy += sim.flock.py[i];
+      return { x: c.x - 10 + driveSpeed * (t - t0), y: cy / sim.flock.count };
     });
     const after = centroid(sim);
-    expect(after.x - c.x, 'the flock was driven downfield').toBeGreaterThan(3);
+    expect(after.x - c.x, 'the flock was driven downfield').toBeGreaterThan(30);
     const steady = rows.slice(10);
-    const walking = steady.filter((r) => r.walkFrac > r.runFrac).length / steady.length;
-    expect(walking, 'mostly walking, not fleeing').toBeGreaterThan(0.5);
+    // Not the state label: pressed steadily from behind the flock flickers in and out of RUN,
+    // but it travels at the pace it is pushed, which is the thing that matters.
+    expect(mean(steady.map((r) => r.speed)), 'at a walk, not a sprint').toBeLessThan(sim.cfg.run.speed * 0.6);
+    expect(mean(steady.map((r) => r.speed)), 'but actually moving').toBeGreaterThan(0.6);
     expect(Math.max(...steady.map((r) => r.splits)), 'held together').toBeLessThanOrEqual(3);
   });
 });
@@ -104,7 +104,7 @@ describe('scenario 6: pointer parked inside the flock', () => {
 
 describe('scenario 7: approach from the blind cone', () => {
   it('registers less at the same distance, and still triggers flight', () => {
-    const gate = 8;
+    const gate = 8; // body lengths from where the flock was standing
     const measure = (fromBehind: boolean): { fearAtGate: number; peakRun: number; startles: number } => {
       const sim = settled({ seed: 4, count: 20 });
       const c = centroid(sim);
@@ -121,8 +121,11 @@ describe('scenario 7: approach from the blind cone', () => {
         14,
         (t) => ({ x: c.x - Math.max(-2, 26 - 3 * (t - t0)), y: c.y }),
         () => {
+          // Gate on the pointer's own position, not on its distance to the nearest sheep: the two
+          // runs are of differently shaped flocks, so a shape-dependent gate samples a steeply
+          // rising fear at two different moments and compares the slope rather than the effect.
           const px = c.x - Math.max(-2, 26 - 3 * (sim.time - t0));
-          if (fearAtGate < 0 && nearestSheep(sim, px, c.y) <= gate) fearAtGate = meanFear(sim);
+          if (fearAtGate < 0 && c.x - px <= gate) fearAtGate = meanFear(sim);
           for (let i = 0; i < sim.flock.count; i++) if (sim.flock.fearJump[i] >= sim.cfg.fear.startleJump) startles++;
           peakRun = Math.max(peakRun, sim.metrics().fractions[3]);
           // keep the blind side blind until the sheep react for themselves
@@ -200,4 +203,62 @@ describe('scenario 9: a separated sheep rejoins', () => {
     expect(rejoinTime, 'and does it promptly').toBeLessThan(30);
     expect(sim.flock.state[lone]).not.toBe(SheepState.Rest);
   });
+});
+
+/**
+ * Scenarios 10 and 11: shedding. The flock is cut in two and the halves are kept apart, which is
+ * a different thing from merely frightening it into fragments — those heal in a second or two.
+ * What makes a cut stick is that cohesion reaches only as far as the group a sheep is actually in,
+ * and half a flock is a flock: big enough to stop pining for the other half. A single lost sheep
+ * still crosses to the rest (scenario 9), because one sheep is not a flock.
+ *
+ * The pointer goes in with a flick, because that is the only way in: walk at a flock from outside
+ * and it backs away faster than you approach, however slowly you come.
+ */
+describe('scenario 10: shedding the flock', () => {
+  for (const seed of [1, 2, 3]) {
+    it(`seed ${seed}: cuts the flock and holds the gap`, () => {
+      const sim = settled({ seed, count: 24 });
+      const c = centroid(sim);
+      const t0 = sim.time;
+      drive(sim, 0.5, (t) => ({ x: c.x + 14 * (1 - (t - t0) / 0.5), y: c.y }));
+      const t1 = sim.time;
+      // hold the gap, where a shepherd stands: between the halves, not where the flock used to be
+      drive(sim, 25, (t) => {
+        const g = gapPoint(sim);
+        return { x: g.x + Math.sin((t - t1) * 2) * 0.8, y: g.y + Math.cos((t - t1) * 2.7) * 0.8 };
+      });
+      const sizes = groupsOf(sim).map((g) => g.length);
+      expect(sizes.length, 'the flock is in pieces').toBeGreaterThanOrEqual(2);
+      expect(sizes[1], 'and the second piece is a real group, not a straggler').toBeGreaterThanOrEqual(4);
+    });
+  }
+});
+
+describe('scenario 11: driving off a shed group', () => {
+  for (const seed of [1, 2, 3]) {
+    it(`seed ${seed}: the halves stay apart once the pointer leaves`, () => {
+      const sim = settled({ seed, count: 24 });
+      const c = centroid(sim);
+      const t0 = sim.time;
+      drive(sim, 0.5, (t) => ({ x: c.x + 14 * (1 - (t - t0) / 0.5), y: c.y }));
+      const t1 = sim.time;
+      drive(sim, 8, (t) => {
+        const g = gapPoint(sim);
+        return { x: g.x + Math.sin((t - t1) * 2) * 0.8, y: g.y + Math.cos((t - t1) * 2.7) * 0.8 };
+      });
+      // walk the western half further west, then leave the flock alone entirely
+      const half = groupsOf(sim).filter((g) => g.length >= 3).sort((a, b) => centreOf(sim, a).x - centreOf(sim, b).x)[0]
+        ?? groupsOf(sim)[0];
+      const t2 = sim.time;
+      drive(sim, 18, (t) => {
+        const w = centreOf(sim, half);
+        return { x: w.x + 5.5 + Math.sin((t - t2) * 1.5) * 0.6, y: w.y + Math.cos((t - t2) * 1.9) * 2.5 };
+      });
+      drive(sim, 15, () => null);
+      const sizes = groupsOf(sim).map((g) => g.length);
+      expect(sizes.length, 'still two flocks with nothing holding them apart').toBeGreaterThanOrEqual(2);
+      expect(sizes[1], 'and the smaller one is a real group').toBeGreaterThanOrEqual(4);
+    });
+  }
 });

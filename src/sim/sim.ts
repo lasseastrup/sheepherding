@@ -66,8 +66,8 @@ export class Sim {
     this.grid.build(f.px, f.py, f.count);
     computeNeighbours(f, this.grid, this.cfg);
     this.updateThreat(dt);
-    this.groups.update(f, this.cfg.group.linkDist, this.cfg.group.comfortable, this.cfg.group.strayDist);
-    this.perception.update(f, this.threat, dt, this.groups);
+    this.groups.update(f, this.grid, this.cfg.group.linkDist, this.cfg.group.shedTolerance, this.cfg.group.strayDist);
+    this.perception.update(f, this.threat, dt);
     if (this.cfg.behaviourEnabled) this.behaviour.update(f, this.time, dt, this.groups);
     this.steering.update(f, this.threat, dt, this.groups, this.lastThreatX, this.lastThreatY, this.threatMemory > 0);
     this.motion.update(f, dt);

@@ -13,6 +13,8 @@ export interface StepSample {
   meanFear: number;
   maxFear: number;
   pointerDist: number;
+  /** mean ground speed of the flock (BL/s) */
+  speed: number;
 }
 
 /** Drive the sim with a scripted pointer path and sample metrics every simulated second. */
@@ -38,9 +40,11 @@ export function drive(
       const m = sim.metrics();
       let fsum = 0;
       let fmax = 0;
+      let ssum = 0;
       let pd = Infinity;
       for (let i = 0; i < sim.flock.count; i++) {
         fsum += sim.flock.fear[i];
+        ssum += sim.flock.speed[i];
         if (sim.flock.fear[i] > fmax) fmax = sim.flock.fear[i];
         if (p) pd = Math.min(pd, Math.hypot(sim.flock.px[i] - p.x, sim.flock.py[i] - p.y));
       }
@@ -57,10 +61,60 @@ export function drive(
         meanFear: fsum / sim.flock.count,
         maxFear: fmax,
         pointerDist: pd,
+        speed: ssum / sim.flock.count,
       });
     }
   }
   return out;
+}
+
+/** Connected groups of the flock at `dist`, as member index lists, largest first. */
+export function groupsOf(sim: Sim, dist = 4): number[][] {
+  const n = sim.flock.count;
+  const parent = new Int32Array(n).map((_, i) => i);
+  const find = (a: number): number => {
+    while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; }
+    return a;
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (Math.hypot(sim.flock.px[i] - sim.flock.px[j], sim.flock.py[i] - sim.flock.py[j]) < dist) {
+        const a = find(i);
+        const b = find(j);
+        if (a !== b) parent[a] = b;
+      }
+    }
+  }
+  const m = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    if (!m.has(r)) m.set(r, []);
+    m.get(r)!.push(i);
+  }
+  return [...m.values()].sort((a, b) => b.length - a.length);
+}
+
+/** Centre of a set of sheep. */
+export function centreOf(sim: Sim, ix: number[]): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  for (const i of ix) { x += sim.flock.px[i]; y += sim.flock.py[i]; }
+  return { x: x / ix.length, y: y / ix.length };
+}
+
+/** Where a shepherd stands to hold a cut open: in the gap, or the middle of a whole flock. */
+export function gapPoint(sim: Sim): { x: number; y: number } {
+  const g = groupsOf(sim);
+  if (g.length >= 2 && g[1].length >= 3) {
+    const a = centreOf(sim, g[0]);
+    const b = centreOf(sim, g[1]);
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+  return centreOf(sim, g[0]);
+}
+
+export function mean(a: number[]): number {
+  return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 }
 
 /** A settled flock: run undisturbed until it is grazing calmly. */

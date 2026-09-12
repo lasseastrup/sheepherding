@@ -19,7 +19,8 @@
     "electron": "npm run build:electron && electron .",
     "dist:win": "npm run build:electron && electron-builder --win portable --publish never",
     "gen": "node tools/gen-glb.mjs",
-    "bench": "npm run gen && node tools/bench.mjs"
+    "bench": "npm run gen && node tools/bench.mjs",
+    "behaviour": "vite-node tools/behaviour.mjs --"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",

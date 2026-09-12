@@ -139,13 +139,28 @@ export interface SimConfig {
     splitPressure: number;
     splitDuration: number;
     splitNeighbours: number;
+    /** how close a sheep will path to the threat, whatever it is feeling (BL) */
+    obstacleRadius: number;
+    /** corridor half-angle, in degrees, for the threat to count as blocking the way back */
+    blockedAngleDeg: number;
+    /** the threat may be this much further off than the flock and still block the way */
+    blockedReach: number;
+    /** how firmly the threat blocks a route, independent of fear */
+    obstacleWeight: number;
     lonelyDangerScale: number;
     lonelyCohesion: number;
   };
   group: {
     linkDist: number;
-    comfortable: number;
+    /** group size at which a sub-group stands on its own and stops seeking the rest */
+    shedTolerance: number;
     strayDist: number;
+    /** pull toward the centre of my own group, at the edge of the group and beyond */
+    flockPull: number;
+    /** radius of a comfortable group of n sheep, as flockSpread * sqrt(n) (BL) */
+    flockSpread: number;
+    /** weak, slow pull between separate groups: a flock left in peace comes back together */
+    driftTogether: number;
     rejoinWeight: number;
     rejoinRunWeight: number;
     threatMemory: number;
@@ -295,13 +310,20 @@ export function defaultConfig(): SimConfig {
       splitPressure: 0.85,
       splitDuration: 3,
       splitNeighbours: 3,
+      obstacleRadius: 3,
+      blockedAngleDeg: 50,
+      blockedReach: 1.4,
+      obstacleWeight: 1.2,
       lonelyDangerScale: 0.5,
       lonelyCohesion: 2,
     },
     group: {
       linkDist: 6,
-      comfortable: 4,
+      shedTolerance: 6,
       strayDist: 8,
+      flockPull: 0.8,
+      flockSpread: 1.0,
+      driftTogether: 0.35,
       rejoinWeight: 1.1,
       rejoinRunWeight: 0.9,
       threatMemory: 12,

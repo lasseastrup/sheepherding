@@ -36,6 +36,8 @@ export class Flock {
   readonly fearJump: Float32Array;
   readonly pressure: Float32Array;
   readonly lonely: Uint8Array;
+  /** 1 while the threat stands between this sheep and the rest of the flock */
+  readonly blocked: Uint8Array;
   readonly splitUntil: Float32Array;
   readonly arousal: Float32Array;
   /** 0 = the threat is novel, 1 = it has hung about harmlessly and is now background */
@@ -101,6 +103,7 @@ export class Flock {
     this.fearJump = f();
     this.pressure = f();
     this.lonely = new Uint8Array(capacity);
+    this.blocked = new Uint8Array(capacity);
     this.splitUntil = f();
     this.arousal = f(); this.familiarity = f(); this.stamina = f().fill(1);
     this.leader = new Int16Array(capacity).fill(-1);
